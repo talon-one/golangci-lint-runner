@@ -18,4 +18,4 @@ steps:
       docker-compose#v3.0.3:
         config: docker-compose.yml
         push:
-          docker-go-node:eu.gcr.io/talon-farm2/talon-one/golangci-lint-runner/${BUILDKITE_BRANCH}:latest
+          golangci-lint-runner:eu.gcr.io/talon-farm2/talon-one/golangci-lint-runner/${BUILDKITE_BRANCH}:latest

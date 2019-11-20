@@ -25,7 +25,7 @@ var (
 	privateKeyFlag    = kingpin.Flag("private-key", "github private key").Envar("GITHUB_PRIVATE_KEY").Required().ExistingFile()
 	webhookSecretFlag = kingpin.Flag("webhook-secret", "github webhook secret").Envar("GITHUB_WEBHOOK_SECRET").Required().String()
 	appIdFlag         = kingpin.Flag("appid", "github app id").Envar("GITHUB_APP_ID").Required().Int64()
-	debugFlag         = kingpin.Flag("debug", "enable debug log").Hidden().Bool()
+	debugFlag         = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
 )
 var version string
 var commit string
