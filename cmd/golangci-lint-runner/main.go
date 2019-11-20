@@ -216,22 +216,24 @@ func handlePullRequestOpened(writer http.ResponseWriter, request *http.Request, 
 		}
 	}
 
-	r := golangci_lint_runner.Runner{
-		PullRequest:       pr,
-		CloneToken:        itoken.GetToken(),
-		GithubClient:      repoClient,
-		Logger:            debug,
-		Context:           context.Background(),
-		IncludeLinterName: true,
-		Timeout:           time.Minute * 10,
-		Linters:           []string{"deadcode", "errcheck", "gosimple", "govet", "ineffassign", "misspell", "staticcheck", "structcheck", "typecheck", "unused", "varcheck"},
-	}
-
-	if err := r.Run(); err != nil {
-		return WireError{
-			PublicError:  errors.New("golangci-linter failed"),
-			PrivateError: fmt.Errorf("golangci-linter failed: %w", err),
+	go func() {
+		r := golangci_lint_runner.Runner{
+			PullRequest:       pr,
+			CloneToken:        itoken.GetToken(),
+			GithubClient:      repoClient,
+			Logger:            debug,
+			Context:           context.Background(),
+			IncludeLinterName: true,
+			Timeout:           time.Minute * 10,
+			Linters:           []string{"deadcode", "errcheck", "gosimple", "govet", "ineffassign", "misspell", "staticcheck", "structcheck", "typecheck", "unused", "varcheck"},
 		}
-	}
+
+		if err := r.Run(); err != nil {
+			log.Printf("error: %s\n", err)
+		}
+
+	}()
+
 	return nil
+
 }
