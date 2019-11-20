@@ -25,7 +25,7 @@ type Issue struct {
 	HunkPos    int
 }
 
-func (r *Runner) runLinter(patchFile string) (*Result, error) {
+func (r *Runner) runLinter(patchFile string, repoDir string) (*Result, error) {
 	args := []string{
 		"run",
 		"--no-config",
@@ -42,8 +42,8 @@ func (r *Runner) runLinter(patchFile string) (*Result, error) {
 	}
 
 	cmd := exec.Command("golangci-lint", args...)
-	r.Logger.Printf("running linter %v in %s\n", cmd.Args, r.GitDirectory)
-	cmd.Dir = r.GitDirectory
+	r.Logger.Printf("running linter %v in %s\n", cmd.Args, repoDir)
+	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("golangci-lint got error: %w", err)

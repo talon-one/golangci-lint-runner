@@ -4,23 +4,8 @@ services:
   golangci-lint-runner:
     build: .
     environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GITHUB_USER=${GITHUB_USER}
-      - GITHUB_REPO=${GITHUB_REPO}
-      - GITHUB_PR_ID=${GITHUB_PR_ID}
-    command: >
-      golangci-lint-runner
-        --clone
-        --dir=/go/src/github.com/$GITHUB_USER/$GITHUB_REPO
-        --github-repository=$GITHUB_USER/$GITHUB_REPO
-        --github-pull-request-id=$GITHUB_PR_ID
-        --linter=deadcode
-        --linter=errcheck
-        --linter=gosimple
-        --linter=govet
-        --linter=ineffassign
-        --linter=staticcheck
-        --linter=structcheck
-        --linter=typecheck
-        --linter=unused
-        --linter=varcheck
+      - HOST_ADDR=:8000
+      - GITHUB_PRIVATE_KEY=/path/to/github-app/private-key
+      - GITHUB_WEBHOOK_SECRET=SECRET-THAT-YOU-SPECIFIED-IN-THE-APP
+      - GITHUB_APP_ID=GUTHUB-APPID
+    command: golangci-lint-runner

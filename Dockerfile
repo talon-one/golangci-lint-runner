@@ -10,4 +10,4 @@ FROM golangci/golangci-lint:v1.21.0
 
 COPY --from=BUILDER /app/golangci-lint-runner /bin/golangci-lint-runner
 
-#CMD ["/app/golangci-lint-runner", "--clone", "--dir=/go/src/github.com/talon-one/talon-service" --github-pull-request-id=3655 --github-repository=talon-one/talon-service --linter=gocyclo --debu]
+CMD ["/app/golangci-lint-runner"]

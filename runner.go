@@ -13,30 +13,41 @@ import (
 
 	"time"
 
+	"path/filepath"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-github/github"
-	"golang.org/x/oauth2"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	gitHttp "gopkg.in/src-d/go-git.v4/plumbing/transport/http"
 )
 
+type BranchMeta struct {
+	OwnerName string
+	RepoName  string
+	FullName  string
+	CloneURL  string
+	SHA       string
+	Ref       string
+}
+
+type MetaData struct {
+	Base BranchMeta
+
+	Head              BranchMeta
+	PullRequestNumber int
+}
+
 type Runner struct {
-	GithubToken               string
-	GithubPullRequestID       int
-	GithubRepository          string
-	githubOwner               string
-	githubRepo                string
-	githubClient              *github.Client
-	Clone                     bool
-	commitID                  string
-	GitDirectory              string
-	cleanGitDirectoryAfterRun bool
-	Logger                    Logger
-	Context                   context.Context
-	Linters                   []string
-	IncludeLinterName         bool
-	Timeout                   time.Duration
+	PullRequest       *github.PullRequest
+	CloneToken        string
+	GithubClient      *github.Client
+	Logger            Logger
+	Context           context.Context
+	IncludeLinterName bool
+	Timeout           time.Duration
+	Linters           []string
+	meta              MetaData
 }
 
 type Logger interface {
@@ -44,101 +55,82 @@ type Logger interface {
 }
 
 func (r *Runner) Run() error {
-	var err error
-	if err = r.initParams(); err != nil {
+	if err := r.getMeta(); err != nil {
+		return err
+	}
+	// prepare workdirectory
+	r.Logger.Printf("preparing work directory")
+	tmp, err := ioutil.TempDir("", "golangci-lint-runner-github-app")
+	if err != nil {
+		return fmt.Errorf("unable to create work directory: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+
+	r.Logger.Printf("work directory is %s\n", tmp)
+
+	if err := os.Setenv("GOPATH", tmp); err != nil {
+		return fmt.Errorf("unable to set GOPATH to %s: %w", tmp, err)
+	}
+
+	repoDir := filepath.Join(tmp, "src", "github.com", r.meta.Head.FullName)
+	if err := os.MkdirAll(repoDir, 0766); err != nil {
+		return fmt.Errorf("unable to create repo %s directory: %w", repoDir, err)
+	}
+
+	r.Logger.Printf("dir = %s\n", tmp)
+	r.Logger.Printf("clone token = %s\n", r.CloneToken)
+
+	if err := r.clone(repoDir); err != nil {
 		return err
 	}
 
-	r.githubOwner, r.githubRepo, err = r.parseOwnerAndRepo(r.GithubRepository)
-	if err != nil {
-		return fmt.Errorf("unable to parse GithubRepository (%s): %w", r.GithubRepository, err)
-	}
-
-	r.Logger.Printf("token = %s\n", r.GithubToken)
-	r.Logger.Printf("pr = %d\n", r.GithubPullRequestID)
-	r.Logger.Printf("owner = %s\n", r.githubOwner)
-	r.Logger.Printf("repo = %s\n", r.githubRepo)
-	r.Logger.Printf("dir = %s\n", r.GitDirectory)
-
-	r.githubClient = github.NewClient(oauth2.NewClient(r.Context, oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: r.GithubToken},
-	)))
-
-	if r.Clone {
-		if err := r.clone(); err != nil {
-			return err
-		}
-	} else {
-		if err := r.getCommitID(); err != nil {
-			return err
-		}
-	}
-
-	r.Logger.Printf("commitID = %s\n", r.commitID)
-
-	patchFile, err := r.downloadPatch()
-	if err != nil {
+	patchFile := filepath.Join(tmp, "patch")
+	if err := r.downloadPatch(patchFile); err != nil {
 		return err
 	}
 
-	result, err := r.runLinter(patchFile)
+	result, err := r.runLinter(patchFile, repoDir)
 	if err != nil {
 		return err
 	}
 	r.Logger.Printf("golangci-lint reported %d issues\n", len(result.Issues))
 
-	r.Logger.Printf("removing patch file\n")
-	if err := os.Remove(patchFile); err != nil {
-		return fmt.Errorf("unable to remove patch file: %w", err)
+	reviewRequest := github.PullRequestReviewRequest{
+		CommitID: github.String(r.meta.Head.SHA),
+		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
+	}
+	if len(result.Issues) <= 0 {
+		reviewRequest.Event = github.String("APPROVE")
+	} else {
+		reviewRequest.Event = github.String("REQUEST_CHANGES")
 	}
 
-	if err := r.clearGitDirectoryAfterRun(); err != nil {
-		return err
-	}
-
-	comments := make([]*github.DraftReviewComment, len(result.Issues))
-
-	if len(result.Issues) == 0 {
-		// no issues found
-		reviewRequest := &github.PullRequestReviewRequest{
-			CommitID: &r.commitID,
-			Body:     github.String("golangci-lint found no issues"),
-			Event:    github.String("APPROVE"),
-			Comments: comments,
-		}
-		r.Logger.Printf("creating review\n")
-		r.Logger.Printf(spew.Sdump(reviewRequest))
-		_, response, err := r.githubClient.PullRequests.CreateReview(r.Context, r.githubOwner, r.githubRepo, r.GithubPullRequestID, reviewRequest)
-		if err != nil {
-			return fmt.Errorf("unable to create review: %w\n", err)
-		}
-		if response.StatusCode != http.StatusOK {
-			return fmt.Errorf("unable to create review: expected 200 got %d", response.StatusCode)
-		}
-		return nil
-	}
-
-	// 1 or more issues found
-	for i, issue := range result.Issues {
+	for _, issue := range result.Issues {
 		if r.IncludeLinterName {
 			issue.Text += fmt.Sprintf(" (from %s)", issue.FromLinter)
 		}
-		comments[i] = &github.DraftReviewComment{
+
+		comment := github.DraftReviewComment{
 			Path:     &issue.File,
 			Position: &issue.LineNumber,
 			Body:     &issue.Text,
 		}
+
+		addToList := true
+		for _, c := range reviewRequest.Comments {
+			if *c.Path == *comment.Path && *c.Position == *comment.Position && *c.Body == *comment.Body {
+				addToList = false
+				break
+			}
+		}
+		if addToList {
+			reviewRequest.Comments = append(reviewRequest.Comments, &comment)
+		}
 	}
 
-	reviewRequest := &github.PullRequestReviewRequest{
-		CommitID: &r.commitID,
-		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
-		Event:    github.String("REQUEST_CHANGES"),
-		Comments: comments,
-	}
 	r.Logger.Printf("creating review\n")
 	r.Logger.Printf(spew.Sdump(reviewRequest))
-	_, response, err := r.githubClient.PullRequests.CreateReview(r.Context, r.githubOwner, r.githubRepo, r.GithubPullRequestID, reviewRequest)
+	_, response, err := r.GithubClient.PullRequests.CreateReview(r.Context, r.meta.Base.OwnerName, r.meta.Base.RepoName, r.meta.PullRequestNumber, &reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review: %w\n", err)
 	}
@@ -148,71 +140,18 @@ func (r *Runner) Run() error {
 	return nil
 }
 
-func (r *Runner) initParams() error {
-	if r.GithubToken == "" {
-		return errors.New("GithubToken must be set")
-	}
-	if r.GithubPullRequestID == 0 {
-		return errors.New("GithubPullRequestID must be set")
-	}
-	if r.GithubRepository == "" {
-		return errors.New("GithubRepository must be set")
-	}
-	if !r.Clone {
-		if r.GitDirectory == "" {
-			return errors.New("GitDirectory must be set")
-		}
-	} else {
-		if r.GitDirectory == "" {
-			var err error
-			r.GitDirectory, err = ioutil.TempDir("", "golangci-lint-runner")
-			if err != nil {
-				return fmt.Errorf("unable to create temp directory: %w", err)
-			}
-		}
-		r.cleanGitDirectoryAfterRun = true
-	}
-
-	if len(r.Linters) <= 0 {
-		return errors.New("Linter is empty, nothing todo")
-	}
-	if r.Logger == nil {
-		r.Logger = dummyLogger{}
-	}
-	if r.Context == nil {
-		r.Context = context.Background()
-	}
-
-	if r.Timeout == 0 {
-		r.Timeout = time.Minute * 10
-	}
-	return nil
-}
-
-func (r *Runner) downloadPatch() (string, error) {
+func (r *Runner) downloadPatch(patchFile string) error {
 	r.Logger.Printf("downloading patch file\n")
-	s, resp, err := r.githubClient.PullRequests.GetRaw(context.Background(), r.githubOwner, r.githubRepo, r.GithubPullRequestID, github.RawOptions{github.Patch})
+
+	s, resp, err := r.GithubClient.PullRequests.GetRaw(context.Background(), r.meta.Base.OwnerName, r.meta.Base.RepoName, r.meta.PullRequestNumber, github.RawOptions{github.Patch})
 	if err != nil {
-		return "", fmt.Errorf("unable to download patch file: %w\n", err)
+		return fmt.Errorf("unable to download patch file: %w\n", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unable to download patch file: expected 200 but got %d\n", resp.StatusCode)
+		return fmt.Errorf("unable to download patch file: expected 200 but got %d\n", resp.StatusCode)
 	}
 
-	tmpfile, err := ioutil.TempFile("", "patch")
-	if err != nil {
-		return "", fmt.Errorf("unable to create patch file: %w\n", err)
-	}
-
-	if _, err := tmpfile.WriteString(s); err != nil {
-		return "", fmt.Errorf("unable to write patch file: %w\n", err)
-	}
-
-	if err := tmpfile.Close(); err != nil {
-		return "", fmt.Errorf("unable to close patch file: %w\n", err)
-	}
-	r.Logger.Printf("got patchfile %s\n", tmpfile.Name())
-	return tmpfile.Name(), nil
+	return ioutil.WriteFile(patchFile, []byte(s), 0766)
 }
 
 func (*Runner) parseOwnerAndRepo(s string) (owner, repo string, err error) {
@@ -223,51 +162,15 @@ func (*Runner) parseOwnerAndRepo(s string) (owner, repo string, err error) {
 	return "", "", errors.New("unable to parse repository")
 }
 
-func (r *Runner) clone() error {
-	pr, response, err := r.githubClient.PullRequests.Get(r.Context, r.githubOwner, r.githubRepo, r.GithubPullRequestID)
-	if err != nil {
-		return fmt.Errorf("unable to get pull request: %w", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("unable to get pull request: expected 200 got %d", response.StatusCode)
-	}
-	head := pr.GetHead()
-	if head == nil {
-		return errors.New("unable to get head")
-	}
-
-	r.commitID = head.GetSHA()
-	if r.commitID == "" {
-		return errors.New("unable to get head sha")
-	}
-
-	ref := head.GetRef()
-	if ref == "" {
-		return errors.New("unable to get head reference")
-	}
-
-	repo, response, err := r.githubClient.Repositories.Get(r.Context, r.githubOwner, r.githubRepo)
-	if err != nil {
-		return fmt.Errorf("unable to get repository: %w", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("unable to get repository: expected 200 got %d", response.StatusCode)
-	}
-
-	// clear the destination
-	r.Logger.Printf("clearing %s\n", r.GitDirectory)
-	if err := os.RemoveAll(r.GitDirectory); err != nil {
-		return fmt.Errorf("unable to clean git directory: %w", err)
-	}
-
-	branchName := fmt.Sprintf("refs/heads/%s", ref)
-	r.Logger.Printf("cloning %s (%s) to %s\n", repo.GetCloneURL(), branchName, r.GitDirectory)
-	_, err = git.PlainCloneContext(r.Context, r.GitDirectory, false, &git.CloneOptions{
-		URL: repo.GetCloneURL(),
+func (r *Runner) clone(repoDir string) error {
+	branchName := fmt.Sprintf("refs/heads/%s", r.meta.Head.Ref)
+	r.Logger.Printf("cloning %s (%s) to %s\n", r.meta.Head.CloneURL, branchName, repoDir)
+	_, err := git.PlainCloneContext(r.Context, repoDir, false, &git.CloneOptions{
+		URL: r.meta.Head.CloneURL,
 		Auth: &gitHttp.BasicAuth{
 			// can be anything expect empty
-			Username: "golangci-lint-runner",
-			Password: r.GithubToken,
+			Username: "x-access-token",
+			Password: r.CloneToken,
 		},
 		ReferenceName:     plumbing.ReferenceName(branchName),
 		SingleBranch:      true,
@@ -277,34 +180,88 @@ func (r *Runner) clone() error {
 		Tags:              git.NoTags,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to clone git repository %s: %w", r.GitDirectory, err)
+		return fmt.Errorf("unable to clone git repository %s to %s: %w", r.meta.Head.CloneURL, repoDir, err)
 	}
 	return nil
 }
 
-func (r *Runner) getCommitID() error {
-	repository, err := git.PlainOpen(r.GitDirectory)
-	if err != nil {
-		return fmt.Errorf("unable to open git repository %s: %w", r.GitDirectory, err)
+func (r *Runner) getMeta() error {
+	r.Logger.Printf("get meta\n")
+
+	r.meta.PullRequestNumber = r.PullRequest.GetNumber()
+	if r.meta.PullRequestNumber == 0 {
+		return errors.New("unable to get number from pull request")
 	}
 
-	head, err := repository.Head()
+	var err error
+	base := r.PullRequest.GetBase()
+	if base == nil {
+		return errors.New("unable to get base")
+	}
+	r.meta.Base, err = r.getBranchMeta(base)
 	if err != nil {
-		return fmt.Errorf("unable to get head from git repository (%s): %w", r.GitDirectory, err)
+		return fmt.Errorf("unable to get branch meta for base: %w", err)
 	}
 
-	r.commitID = head.Hash().String()
+	head := r.PullRequest.GetHead()
+	if head == nil {
+		return errors.New("unable to get head")
+	}
+	r.meta.Head, err = r.getBranchMeta(head)
+	if err != nil {
+		return fmt.Errorf("unable to get branch meta for head: %w", err)
+	}
+
 	return nil
 }
 
-func (r *Runner) clearGitDirectoryAfterRun() error {
-	if !r.cleanGitDirectoryAfterRun {
-		return nil
+func (Runner) getBranchMeta(branch *github.PullRequestBranch) (BranchMeta, error) {
+	sha := branch.GetSHA()
+	if sha == "" {
+		return BranchMeta{}, errors.New("unable to get sha")
 	}
 
-	r.Logger.Printf("cleaning git directory\n")
-	if err := os.RemoveAll(r.GitDirectory); err != nil {
-		return fmt.Errorf("unable to clean git directory: %w", err)
+	ref := branch.GetRef()
+	if ref == "" {
+		return BranchMeta{}, errors.New("unable to get ref")
 	}
-	return nil
+
+	repo := branch.GetRepo()
+	if repo == nil {
+		return BranchMeta{}, errors.New("unable to get repo")
+	}
+
+	name := repo.GetName()
+	if name == "" {
+		return BranchMeta{}, errors.New("unable to get repo name")
+	}
+
+	fullName := repo.GetFullName()
+	if fullName == "" {
+		return BranchMeta{}, errors.New("unable to get repo fullname")
+	}
+
+	cloneURL := repo.GetCloneURL()
+	if cloneURL == "" {
+		return BranchMeta{}, errors.New("unable to get repo clone url")
+	}
+
+	owner := repo.GetOwner()
+	if owner == nil {
+		return BranchMeta{}, errors.New("unable to get repo owner")
+	}
+
+	login := owner.GetLogin()
+	if login == "" {
+		return BranchMeta{}, errors.New("unable to get owner login name")
+	}
+
+	return BranchMeta{
+		OwnerName: login,
+		RepoName:  name,
+		FullName:  fullName,
+		CloneURL:  cloneURL,
+		Ref:       ref,
+		SHA:       sha,
+	}, nil
 }
