@@ -130,10 +130,16 @@ func handleEvent(writer http.ResponseWriter, request *http.Request) error {
 	switch e := event.(type) {
 	case *github.PullRequestEvent:
 		return handlePullRequest(writer, request, e)
+	case *github.PingEvent:
+		return nil
 	}
 	debug.Printf("unhandled event %T", event)
 
-	return nil
+	return WireError{
+		StatusCode:   http.StatusBadRequest,
+		PublicError:  errors.New("unknown event"),
+		PrivateError: fmt.Errorf("unknown event %T", event),
+	}
 }
 
 func handlePullRequest(writer http.ResponseWriter, request *http.Request, event *github.PullRequestEvent) error {
