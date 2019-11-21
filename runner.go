@@ -11,12 +11,11 @@ import (
 
 	"io/ioutil"
 
-	"time"
-
 	"path/filepath"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-github/github"
+	"github.com/talon-one/golangci-lint-runner/internal"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	gitHttp "gopkg.in/src-d/go-git.v4/plumbing/transport/http"
@@ -36,67 +35,103 @@ type MetaData struct {
 
 	Head              BranchMeta
 	PullRequestNumber int
+	InstallationID    int64
 }
 
 type Runner struct {
-	PullRequest       *github.PullRequest
-	CloneToken        string
-	GithubClient      *github.Client
-	Logger            Logger
-	Context           context.Context
-	IncludeLinterName bool
-	Timeout           time.Duration
-	Linters           []string
-	meta              MetaData
+	Context      context.Context
+	Installation *github.Installation
+	PullRequest  *github.PullRequest
+
+	appClient  *github.Client
+	repoClient *github.Client
+
+	meta       MetaData
+	cloneToken *github.InstallationToken
+
+	Options       *Options
+	linterOptions *LinterOptions
 }
 
-type Logger interface {
-	Printf(string, ...interface{})
-}
-
-func (r *Runner) Run() error {
-	if err := r.getMeta(); err != nil {
-		return err
+func NewRunner(context context.Context, installation *github.Installation, pullRequest *github.PullRequest, options *Options) (*Runner, error) {
+	runner := Runner{
+		Context:      context,
+		Installation: installation,
+		PullRequest:  pullRequest,
+		Options:      options,
 	}
-	// prepare workdirectory
-	r.Logger.Printf("preparing work directory")
-	tmp, err := ioutil.TempDir("", "golangci-lint-runner-github-app")
+	if err := runner.getMeta(); err != nil {
+		return nil, err
+	}
+
+	var err error
+	runner.appClient, runner.repoClient, err = internal.MakeClients(options.AppID, runner.meta.InstallationID, options.PrivateKey)
+	if err != nil {
+		return nil, internal.WireError{
+			PrivateError: fmt.Errorf("unable to make client: %w", err),
+		}
+	}
+
+	options.Logger.Debug("creating installation token")
+	// todo: we can store this token for a later use
+	runner.cloneToken, _, err = runner.appClient.Apps.CreateInstallationToken(context, runner.meta.InstallationID)
+	if err != nil {
+		return nil, internal.WireError{
+			PrivateError: fmt.Errorf("unable to create installation token: %w", err),
+		}
+	}
+	if runner.cloneToken.GetToken() == "" {
+		return nil, internal.WireError{
+			PrivateError: errors.New("unable to get installation token"),
+		}
+	}
+
+	return &runner, nil
+}
+
+func (runner *Runner) Run() error {
+	// prepare work directory
+	runner.Options.Logger.Debug("preparing work directory")
+	workDir, err := ioutil.TempDir("", "golangci-lint-runner")
 	if err != nil {
 		return fmt.Errorf("unable to create work directory: %w", err)
 	}
-	defer os.RemoveAll(tmp)
+	// remove work directory on end
+	defer func() {
+		if err := os.RemoveAll(workDir); err != nil {
+			runner.Options.Logger.Error("unable to delete work directory: %w", err)
+		}
+	}()
 
-	r.Logger.Printf("work directory is %s\n", tmp)
+	runner.Options.Logger.Debug("work directory is %s", workDir)
 
-	if err := os.Setenv("GOPATH", tmp); err != nil {
-		return fmt.Errorf("unable to set GOPATH to %s: %w", tmp, err)
-	}
-
-	repoDir := filepath.Join(tmp, "src", "github.com", r.meta.Head.FullName)
+	// todo: replace github.com with some response from api
+	repoDir := filepath.Join(workDir, "src", "github.com", runner.meta.Head.FullName)
 	if err := os.MkdirAll(repoDir, 0766); err != nil {
 		return fmt.Errorf("unable to create repo %s directory: %w", repoDir, err)
 	}
+	runner.Options.Logger.Debug("repo directory is %s", repoDir)
 
-	r.Logger.Printf("dir = %s\n", tmp)
-	r.Logger.Printf("clone token = %s\n", r.CloneToken)
-
-	if err := r.clone(repoDir); err != nil {
+	if err := runner.clone(repoDir); err != nil {
 		return err
 	}
 
-	patchFile := filepath.Join(tmp, "patch")
-	if err := r.downloadPatch(patchFile); err != nil {
+	//todo: read linte roptions from repository, for now just copy the defaults
+	runner.linterOptions = &runner.Options.DefaultLinterOptions
+
+	patchFile := filepath.Join(workDir, "patch")
+	if err := runner.downloadPatch(patchFile); err != nil {
 		return err
 	}
 
-	result, err := r.runLinter(patchFile, repoDir)
+	result, err := runner.runLinter(patchFile, workDir, repoDir)
 	if err != nil {
 		return err
 	}
-	r.Logger.Printf("golangci-lint reported %d issues\n", len(result.Issues))
+	runner.Options.Logger.Info("golangci-lint reported %d issues for %s", len(result.Issues), runner.meta.Head.FullName)
 
 	reviewRequest := github.PullRequestReviewRequest{
-		CommitID: github.String(r.meta.Head.SHA),
+		CommitID: github.String(runner.meta.Head.SHA),
 		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
 	}
 	if len(result.Issues) <= 0 {
@@ -106,7 +141,7 @@ func (r *Runner) Run() error {
 	}
 
 	for _, issue := range result.Issues {
-		if r.IncludeLinterName {
+		if runner.linterOptions.IncludeLinterName {
 			issue.Text += fmt.Sprintf(" (from %s)", issue.FromLinter)
 		}
 
@@ -128,11 +163,11 @@ func (r *Runner) Run() error {
 		}
 	}
 
-	r.Logger.Printf("creating review\n")
-	r.Logger.Printf(spew.Sdump(reviewRequest))
-	_, response, err := r.GithubClient.PullRequests.CreateReview(r.Context, r.meta.Base.OwnerName, r.meta.Base.RepoName, r.meta.PullRequestNumber, &reviewRequest)
+	runner.Options.Logger.Debug("creating review")
+	runner.Options.Logger.Debug(spew.Sdump(reviewRequest))
+	_, response, err := runner.appClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
 	if err != nil {
-		return fmt.Errorf("unable to create review: %w\n", err)
+		return fmt.Errorf("unable to create review: %w", err)
 	}
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("unable to create review: expected 200 got %d", response.StatusCode)
@@ -140,15 +175,11 @@ func (r *Runner) Run() error {
 	return nil
 }
 
-func (r *Runner) downloadPatch(patchFile string) error {
-	r.Logger.Printf("downloading patch file\n")
-
-	s, resp, err := r.GithubClient.PullRequests.GetRaw(context.Background(), r.meta.Base.OwnerName, r.meta.Base.RepoName, r.meta.PullRequestNumber, github.RawOptions{github.Patch})
+func (runner *Runner) downloadPatch(patchFile string) error {
+	runner.Options.Logger.Debug("downloading patch file")
+	s, _, err := runner.appClient.PullRequests.GetRaw(context.Background(), runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.RawOptions{github.Patch})
 	if err != nil {
-		return fmt.Errorf("unable to download patch file: %w\n", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unable to download patch file: expected 200 but got %d\n", resp.StatusCode)
+		return fmt.Errorf("unable to download patch file: %w", err)
 	}
 
 	return ioutil.WriteFile(patchFile, []byte(s), 0766)
@@ -162,15 +193,15 @@ func (*Runner) parseOwnerAndRepo(s string) (owner, repo string, err error) {
 	return "", "", errors.New("unable to parse repository")
 }
 
-func (r *Runner) clone(repoDir string) error {
-	branchName := fmt.Sprintf("refs/heads/%s", r.meta.Head.Ref)
-	r.Logger.Printf("cloning %s (%s) to %s\n", r.meta.Head.CloneURL, branchName, repoDir)
-	_, err := git.PlainCloneContext(r.Context, repoDir, false, &git.CloneOptions{
-		URL: r.meta.Head.CloneURL,
+func (runner *Runner) clone(repoDir string) error {
+	branchName := fmt.Sprintf("refs/heads/%s", runner.meta.Head.Ref)
+	runner.Options.Logger.Debug("cloning %s (%s) to %s", runner.meta.Head.CloneURL, branchName, repoDir)
+	_, err := git.PlainCloneContext(runner.Context, repoDir, false, &git.CloneOptions{
+		URL: runner.meta.Head.CloneURL,
 		Auth: &gitHttp.BasicAuth{
 			// can be anything expect empty
 			Username: "x-access-token",
-			Password: r.CloneToken,
+			Password: runner.cloneToken.GetToken(),
 		},
 		ReferenceName:     plumbing.ReferenceName(branchName),
 		SingleBranch:      true,
@@ -180,34 +211,39 @@ func (r *Runner) clone(repoDir string) error {
 		Tags:              git.NoTags,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to clone git repository %s to %s: %w", r.meta.Head.CloneURL, repoDir, err)
+		return fmt.Errorf("unable to clone git repository %s to %s: %w", runner.meta.Head.CloneURL, repoDir, err)
 	}
 	return nil
 }
 
-func (r *Runner) getMeta() error {
-	r.Logger.Printf("get meta\n")
+func (runner *Runner) getMeta() error {
+	runner.Options.Logger.Debug("get meta")
 
-	r.meta.PullRequestNumber = r.PullRequest.GetNumber()
-	if r.meta.PullRequestNumber == 0 {
+	runner.meta.InstallationID = runner.Installation.GetID()
+	if runner.meta.InstallationID == 0 {
+		return errors.New("unable to get id from installation")
+	}
+
+	runner.meta.PullRequestNumber = runner.PullRequest.GetNumber()
+	if runner.meta.PullRequestNumber == 0 {
 		return errors.New("unable to get number from pull request")
 	}
 
 	var err error
-	base := r.PullRequest.GetBase()
+	base := runner.PullRequest.GetBase()
 	if base == nil {
 		return errors.New("unable to get base")
 	}
-	r.meta.Base, err = r.getBranchMeta(base)
+	runner.meta.Base, err = runner.getBranchMeta(base)
 	if err != nil {
 		return fmt.Errorf("unable to get branch meta for base: %w", err)
 	}
 
-	head := r.PullRequest.GetHead()
+	head := runner.PullRequest.GetHead()
 	if head == nil {
 		return errors.New("unable to get head")
 	}
-	r.meta.Head, err = r.getBranchMeta(head)
+	runner.meta.Head, err = runner.getBranchMeta(head)
 	if err != nil {
 		return fmt.Errorf("unable to get branch meta for head: %w", err)
 	}

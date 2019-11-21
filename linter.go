@@ -25,7 +25,7 @@ type Issue struct {
 	HunkPos    int
 }
 
-func (r *Runner) runLinter(patchFile string, repoDir string) (*Result, error) {
+func (runner *Runner) runLinter(patchFile string, workDir, repoDir string) (*Result, error) {
 	args := []string{
 		"run",
 		"--no-config",
@@ -33,17 +33,20 @@ func (r *Runner) runLinter(patchFile string, repoDir string) (*Result, error) {
 		"--issues-exit-code=0",
 		"--disable-all",
 		"--new=false",
-		fmt.Sprintf("--timeout=%s", r.Timeout),
+		fmt.Sprintf("--timeout=%s", runner.Options.Timeout.String()),
 		fmt.Sprintf("--new-from-patch=%s", patchFile),
 	}
 
-	for _, linter := range r.Linters {
+	for _, linter := range runner.linterOptions.Linters {
 		args = append(args, fmt.Sprintf("--enable=%s", linter))
 	}
 
 	cmd := exec.Command("golangci-lint", args...)
-	r.Logger.Printf("running linter %v in %s\n", cmd.Args, repoDir)
+	runner.Options.Logger.Debug("running linter %v in %s", cmd.Args, repoDir)
 	cmd.Dir = repoDir
+	cmd.Env = []string{
+		fmt.Sprintf("GOPATH=%s", workDir),
+	}
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("golangci-lint got error: %w", err)
