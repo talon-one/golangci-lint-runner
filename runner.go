@@ -144,23 +144,23 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	result, err := runner.runLinter(patchFile, workDir, repoDir)
+	issues, err := runner.runLinter(patchFile, workDir, repoDir)
 	if err != nil {
 		return err
 	}
-	runner.Options.Logger.Info("golangci-lint reported %d issues for %s", len(result.Issues), runner.meta.Head.FullName)
+	runner.Options.Logger.Info("golangci-lint reported %d issues for %s", len(issues), runner.meta.Head.FullName)
 
 	reviewRequest := github.PullRequestReviewRequest{
 		CommitID: github.String(runner.meta.Head.SHA),
-		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
+		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(issues))),
 	}
-	if len(result.Issues) <= 0 {
+	if len(issues) <= 0 {
 		reviewRequest.Event = github.String("APPROVE")
 	} else {
 		reviewRequest.Event = github.String("REQUEST_CHANGES")
 	}
 
-	for i := range result.Issues {
+	for i := range issues {
 		// if runner.linterOptions.IncludeLinterName {
 		// 	result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
 		// }
@@ -174,9 +174,9 @@ func (runner *Runner) Run() error {
 		// }
 		// if addToList {
 		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
-			Path:     &result.Issues[i].File,
-			Position: &result.Issues[i].HunkPos,
-			Body:     &result.Issues[i].Text,
+			Path:     github.String(issues[i].FilePath()),
+			Position: github.Int(issues[i].HunkPos),
+			Body:     github.String(issues[i].Text),
 		})
 		// }
 	}

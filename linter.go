@@ -13,24 +13,27 @@ import (
 	"os"
 
 	"github.com/golangci/golangci-lint/pkg/printers"
+	"github.com/golangci/golangci-lint/pkg/result"
 )
 
-type Result struct {
-	Issues           []Issue
-	MaxIssuesPerFile int // Needed for gofmt and goimports where it is 1
-	ResultJSON       interface{}
-}
+// type Result struct {
+// 	Issues           []result.Issue
+// 	MaxIssuesPerFile int // Needed for gofmt and goimports where it is 1
+// 	ResultJSON       interface{}
+// }
 
-type Issue struct {
-	FromLinter string
-	Text       string
-	File       string
-	LineNumber int
-	HunkPos    int
-}
+//
+// type Issue struct {
+// 	FromLinter string
+// 	Text       string
+// 	File       string
+// 	LineNumber int
+// 	HunkPos    int
+// }
 
-func (runner *Runner) runLinter(patchFile string, workDir, repoDir string) (*Result, error) {
+func (runner *Runner) runLinter(patchFile string, workDir, repoDir string) ([]result.Issue, error) {
 	args := []string{
+
 		"run",
 		"--no-config",
 		"--out-format=json",
@@ -92,18 +95,5 @@ func (runner *Runner) runLinter(patchFile string, workDir, repoDir string) (*Res
 		log.Println("Got golangci-lint warnings: %#v", res.Report.Warnings)
 	}
 
-	var retIssues []Issue
-	for _, i := range res.Issues {
-		retIssues = append(retIssues, Issue{
-			File:       i.FilePath(),
-			LineNumber: i.Line(),
-			Text:       i.Text,
-			FromLinter: i.FromLinter,
-			HunkPos:    i.HunkPos,
-		})
-	}
-	return &Result{
-		Issues:     retIssues,
-		ResultJSON: json.RawMessage(out),
-	}, nil
+	return res.Issues, nil
 }
