@@ -171,16 +171,16 @@ func (runner *Runner) Run() error {
 			Body:     &issue.Text,
 		}
 
-		addToList := true
-		for _, c := range reviewRequest.Comments {
-			if *c.Path == *comment.Path && *c.Position == *comment.Position && *c.Body == *comment.Body {
-				addToList = false
-				break
-			}
-		}
-		if addToList {
-			reviewRequest.Comments = append(reviewRequest.Comments, &comment)
-		}
+		// addToList := true
+		// for _, c := range reviewRequest.Comments {
+		// 	if *c.Path == *comment.Path && *c.Position == *comment.Position && *c.Body == *comment.Body {
+		// 		addToList = false
+		// 		break
+		// 	}
+		// }
+		// if addToList {
+		reviewRequest.Comments = append(reviewRequest.Comments, &comment)
+		// }
 	}
 
 	runner.Options.Logger.Debug("creating review")
