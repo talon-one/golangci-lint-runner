@@ -161,15 +161,9 @@ func (runner *Runner) Run() error {
 	}
 
 	for i := range result.Issues {
-		if runner.linterOptions.IncludeLinterName {
-			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
-		}
-
-		comment := github.DraftReviewComment{
-			Path:     &result.Issues[i].File,
-			Position: &result.Issues[i].HunkPos,
-			Body:     &result.Issues[i].Text,
-		}
+		// if runner.linterOptions.IncludeLinterName {
+		// 	result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
+		// }
 
 		// addToList := true
 		// for _, c := range reviewRequest.Comments {
@@ -179,7 +173,11 @@ func (runner *Runner) Run() error {
 		// 	}
 		// }
 		// if addToList {
-		reviewRequest.Comments = append(reviewRequest.Comments, &comment)
+		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
+			Path:     &result.Issues[i].File,
+			Position: &result.Issues[i].HunkPos,
+			Body:     &result.Issues[i].Text,
+		})
 		// }
 	}
 
