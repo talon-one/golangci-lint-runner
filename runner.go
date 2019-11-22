@@ -235,7 +235,7 @@ func (runner *Runner) Run() error {
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("unable to create review: expected 200 got %d", response.StatusCode)
 	}
-	runner.Options.Logger.Debug("finished, took %s", time.Now().Sub(startTime).String())
+	runner.Options.Logger.Debug("finished with %d, took %s", runner.meta.PullRequestNumber, time.Now().Sub(startTime).String())
 	return nil
 }
 
