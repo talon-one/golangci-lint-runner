@@ -71,6 +71,7 @@ func NewServer(queueSize int, options *Options) (*Server, error) {
 }
 
 func (srv *Server) HttpHandler() http.Handler {
+	srv.startQueue()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.handler(srv.handleEvent))
 	return mux
