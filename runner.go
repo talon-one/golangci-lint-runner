@@ -234,15 +234,15 @@ func (runner *Runner) Run() error {
 			reviewRequest.Event = github.String("COMMENT")
 		}
 
-		for i := range issues {
+		for _, issue := range issues {
 			if runner.linterOptions.IncludeLinterName {
-				issues[i].Text += fmt.Sprintf(" (from %s)", issues[i].FromLinter)
+				issues[i].Text += fmt.Sprintf(" (from %s)", issue.FromLinter)
 			}
 
 			reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
-				Path:     github.String(issues[i].FilePath()),
-				Position: github.Int(issues[i].HunkPos + 1),
-				Body:     github.String(issues[i].Text),
+				Path:     github.String(issue.FilePath()),
+				Position: github.Int(issue.HunkPos + 1),
+				Body:     github.String(issue.Text),
 			})
 		}
 
