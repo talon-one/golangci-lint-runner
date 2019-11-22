@@ -30,6 +30,8 @@ type Options struct {
 	Timeout              time.Duration
 	DefaultLinterOptions LinterOptions
 	CacheDir             string
+	Approve              bool
+	RequestChanges       bool
 }
 
 type Logger interface {

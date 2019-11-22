@@ -16,8 +16,11 @@ import (
 	"strconv"
 	"time"
 
+	"strings"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/golangci/golangci-lint/pkg/report"
 	"github.com/google/go-github/github"
 	"github.com/talon-one/golangci-lint-runner/internal"
 	"gopkg.in/src-d/go-git.v4"
@@ -159,25 +162,52 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	issues, err := runner.runLinter(runner.cacheDir, patchFile, workDir, repoDir)
+	result, err := runner.runLinter(runner.cacheDir, patchFile, workDir, repoDir)
 	if err != nil {
 		return err
 	}
-	runner.Options.Logger.Info("golangci-lint reported %d issues for %s", len(issues), runner.meta.Head.FullName)
+
+	var warnings []report.Warning
+	if result.Report != nil {
+		warnings = result.Report.Warnings
+	}
+
+	runner.Options.Logger.Info("golangci-lint reported %d issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
 
 	reviewRequest := github.PullRequestReviewRequest{
 		CommitID: github.String(runner.meta.Head.SHA),
-		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(issues))),
-	}
-	if len(issues) <= 0 {
-		reviewRequest.Event = github.String("APPROVE")
-	} else {
-		reviewRequest.Event = github.String("REQUEST_CHANGES")
+		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
 	}
 
-	for i := range issues {
+	if len(warnings) > 0 {
+		var sb strings.Builder
+		sb.WriteString(*reviewRequest.Body)
+		sb.WriteRune(',')
+		fmt.Fprintf(&sb, " but got %d warnings:", len(warnings))
+		sb.WriteString("<code>")
+		for _, w := range warnings {
+			fmt.Fprintf(&sb, "%s: %s\n", w.Tag, strings.TrimSpace(w.Text))
+		}
+		sb.WriteString("</code>")
+	}
+
+	if len(result.Issues) <= 0 && len(warnings) <= 0 {
+		if runner.Options.Approve {
+			reviewRequest.Event = github.String("APPROVE")
+		} else {
+			reviewRequest.Event = github.String("COMMENT")
+		}
+	} else {
+		if runner.Options.RequestChanges {
+			reviewRequest.Event = github.String("REQUEST_CHANGES")
+		} else {
+			reviewRequest.Event = github.String("COMMENT")
+		}
+	}
+
+	for i := range result.Issues {
 		if runner.linterOptions.IncludeLinterName {
-			issues[i].Text += fmt.Sprintf(" (from %s)", issues[i].FromLinter)
+			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
 		}
 
 		// addToList := true
@@ -189,9 +219,9 @@ func (runner *Runner) Run() error {
 		// }
 		// if addToList {
 		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
-			Path:     github.String(issues[i].FilePath()),
-			Position: github.Int(issues[i].HunkPos + 1),
-			Body:     github.String(issues[i].Text),
+			Path:     github.String(result.Issues[i].FilePath()),
+			Position: github.Int(result.Issues[i].HunkPos + 1),
+			Body:     github.String(result.Issues[i].Text),
 		})
 		// }
 	}

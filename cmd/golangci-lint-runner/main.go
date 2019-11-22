@@ -15,13 +15,15 @@ import (
 )
 
 var (
-	addrFlag          = kingpin.Flag("host-addr", "address to listen to, if unspecified takes HOST_ADDR environment variable").Envar("HOST_ADDR").Required().String()
-	privateKeyFlag    = kingpin.Flag("private-key", "github private key").Envar("GITHUB_PRIVATE_KEY").Required().ExistingFile()
-	webhookSecretFlag = kingpin.Flag("webhook-secret", "github webhook secret").Envar("GITHUB_WEBHOOK_SECRET").Required().String()
-	appIdFlag         = kingpin.Flag("appid", "github app id").Envar("GITHUB_APP_ID").Required().Int64()
-	queueSizeFlag     = kingpin.Flag("queue-size", "queue size").Envar("QUEUE_SIZE").Default("100").Int()
-	cacheDirFlag      = kingpin.Flag("cache-dir", "cache dir").Envar("CACHE_DIR").String()
-	debugFlag         = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
+	addrFlag           = kingpin.Flag("host-addr", "address to listen to, if unspecified takes HOST_ADDR environment variable").Envar("HOST_ADDR").Required().String()
+	privateKeyFlag     = kingpin.Flag("private-key", "github private key").Envar("GITHUB_PRIVATE_KEY").Required().ExistingFile()
+	webhookSecretFlag  = kingpin.Flag("webhook-secret", "github webhook secret").Envar("GITHUB_WEBHOOK_SECRET").Required().String()
+	appIdFlag          = kingpin.Flag("appid", "github app id").Envar("GITHUB_APP_ID").Required().Int64()
+	queueSizeFlag      = kingpin.Flag("queue-size", "queue size").Envar("QUEUE_SIZE").Default("100").Int()
+	cacheDirFlag       = kingpin.Flag("cache-dir", "cache dir").Envar("CACHE_DIR").String()
+	approveFlag        = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
+	requestChangesFlag = kingpin.Flag("request-changes", "whether the app should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
+	debugFlag          = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
 )
 var version string
 var commit string
@@ -47,12 +49,14 @@ func main() {
 	}
 
 	options := golangci_lint_runner.Options{
-		PrivateKey:    privateKey,
-		WebhookSecret: *webhookSecretFlag,
-		AppID:         *appIdFlag,
-		Logger:        logger,
-		Timeout:       0,
-		CacheDir:      *cacheDirFlag,
+		PrivateKey:     privateKey,
+		WebhookSecret:  *webhookSecretFlag,
+		AppID:          *appIdFlag,
+		Logger:         logger,
+		Timeout:        0,
+		CacheDir:       *cacheDirFlag,
+		Approve:        *approveFlag,
+		RequestChanges: *requestChangesFlag,
 		DefaultLinterOptions: golangci_lint_runner.LinterOptions{
 			Linters:           []string{"deadcode", "errcheck", "gosimple", "govet", "ineffassign", "misspell", "staticcheck", "structcheck", "typecheck", "unused", "varcheck"},
 			IncludeLinterName: true,
