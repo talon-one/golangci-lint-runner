@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"strings"
 
 	"os"
 
@@ -46,20 +45,13 @@ func (runner *Runner) runLinter(cacheDir, patchFile, workDir, repoDir string) (*
 	}
 
 	var res printers.JSONResult
-	if err := json.Unmarshal(out, &res); err == nil && res.Report.Error != "" {
-		return nil, fmt.Errorf("can't run golangci-lint: %w", res.Report.Error)
-	}
-
-	const badLoadStr = "failed to load program with go/packages"
-	if strings.Contains(err.Error(), badLoadStr) {
-		ind := strings.Index(err.Error(), badLoadStr)
-		if ind < len(err.Error())-1 {
-			return nil, errors.New(err.Error()[ind:])
-		}
-	}
-
-	if err := json.Unmarshal(out, &res); err != nil {
+	err = json.Unmarshal(out, &res)
+	if err != nil {
 		return nil, fmt.Errorf("can't run golangci-lint: invalid output json: %s, %w", string(out), err)
+	}
+
+	if res.Report != nil && res.Report.Error != "" {
+		return nil, fmt.Errorf("can't run golangci-lint: %w", res.Report.Error)
 	}
 
 	return &res, nil
