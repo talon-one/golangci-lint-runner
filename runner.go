@@ -174,67 +174,75 @@ func (runner *Runner) Run() error {
 
 	runner.Options.Logger.Info("golangci-lint reported %d issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
 
-	reviewRequest := github.PullRequestReviewRequest{
-		CommitID: github.String(runner.meta.Head.SHA),
-		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
-	}
-
 	if len(warnings) > 0 {
+		reviewRequest := github.PullRequestReviewRequest{
+			CommitID: github.String(runner.meta.Head.SHA),
+			Event:    github.String("COMMENT"),
+		}
 		var sb strings.Builder
-		sb.WriteString(*reviewRequest.Body)
-		sb.WriteRune(',')
-		fmt.Fprintf(&sb, " but got %d warnings:", len(warnings))
+		fmt.Fprintf(&sb, "golangci-lint got %d warnings", len(warnings))
 		sb.WriteString("<code>")
 		for _, w := range warnings {
 			fmt.Fprintf(&sb, "%s: %s\n", w.Tag, strings.TrimSpace(w.Text))
 		}
 		sb.WriteString("</code>")
+
+		runner.Options.Logger.Debug("creating review")
+		runner.Options.Logger.Debug(spew.Sdump(reviewRequest))
+		_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
+		if err != nil {
+			return fmt.Errorf("unable to create review: %w", err)
+		}
 	}
 
-	if len(result.Issues) <= 0 && len(warnings) <= 0 {
-		if runner.Options.Approve {
-			reviewRequest.Event = github.String("APPROVE")
+	min := func(a, b int) int {
+		if a < b {
+			return a
+		}
+		return b
+	}
+
+	for i := 0; i < len(result.Issues); i += 10 {
+		issues := result.Issues[i:min(len(result.Issues), i+10)]
+		reviewRequest := github.PullRequestReviewRequest{
+			CommitID: github.String(runner.meta.Head.SHA),
+			Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(issues))),
+		}
+
+		if len(issues) <= 0 {
+			if runner.Options.Approve {
+				reviewRequest.Event = github.String("APPROVE")
+			} else {
+				reviewRequest.Event = github.String("COMMENT")
+			}
 		} else {
-			reviewRequest.Event = github.String("COMMENT")
+			if runner.Options.RequestChanges {
+				reviewRequest.Event = github.String("REQUEST_CHANGES")
+			} else {
+				reviewRequest.Event = github.String("COMMENT")
+			}
 		}
-	} else {
-		if runner.Options.RequestChanges {
-			reviewRequest.Event = github.String("REQUEST_CHANGES")
-		} else {
-			reviewRequest.Event = github.String("COMMENT")
+
+		for i := range issues {
+			if runner.linterOptions.IncludeLinterName {
+				issues[i].Text += fmt.Sprintf(" (from %s)", issues[i].FromLinter)
+			}
+
+			reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
+				Path:     github.String(issues[i].FilePath()),
+				Position: github.Int(issues[i].HunkPos + 1),
+				Body:     github.String(issues[i].Text),
+			})
+		}
+
+		runner.Options.Logger.Debug("creating review")
+		runner.Options.Logger.Debug(spew.Sdump(reviewRequest))
+		_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
+		if err != nil {
+			return fmt.Errorf("unable to create review: %w", err)
 		}
 	}
 
-	for i := range result.Issues {
-		if runner.linterOptions.IncludeLinterName {
-			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
-		}
-
-		// addToList := true
-		// for _, c := range reviewRequest.Comments {
-		// 	if *c.Path == *comment.Path && *c.Position == *comment.Position && *c.Body == *comment.Body {
-		// 		addToList = false
-		// 		break
-		// 	}
-		// }
-		// if addToList {
-		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
-			Path:     github.String(result.Issues[i].FilePath()),
-			Position: github.Int(result.Issues[i].HunkPos + 1),
-			Body:     github.String(result.Issues[i].Text),
-		})
-		// }
-	}
-
-	runner.Options.Logger.Debug("creating review")
-	runner.Options.Logger.Debug(spew.Sdump(reviewRequest))
-	_, response, err := runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
-	if err != nil {
-		return fmt.Errorf("unable to create review: %w", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("unable to create review: expected 200 got %d", response.StatusCode)
-	}
 	runner.Options.Logger.Debug("finished with %d, took %s", runner.meta.PullRequestNumber, time.Now().Sub(startTime).String())
 	return nil
 }
