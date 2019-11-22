@@ -79,12 +79,16 @@ func (srv *Server) HttpHandler() http.Handler {
 
 func (srv *Server) startQueue() {
 	srv.queueStarter.Do(func() {
-		for runner := range srv.queue {
-			if err := runner.Run(); err != nil {
-				srv.Options.Logger.Error("runner failed: %s", err.Error())
-			}
-		}
+		go srv.workQueue()
 	})
+}
+
+func (srv *Server) workQueue() {
+	for runner := range srv.queue {
+		if err := runner.Run(); err != nil {
+			srv.Options.Logger.Error("runner failed: %s", err.Error())
+		}
+	}
 }
 
 func (srv *Server) Close() error {
