@@ -62,7 +62,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Info("Stating listening on %s\n", *addrFlag)
+	logger.Info("Stating listening on %s", *addrFlag)
 	if err := http.ListenAndServe(*addrFlag, srv.HttpHandler()); err != nil {
 		logger.Error(err.Error())
 		os.Exit(1)
