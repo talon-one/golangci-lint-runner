@@ -7,6 +7,9 @@ import (
 
 	"os"
 
+	"io/ioutil"
+
+	"github.com/dgrijalva/jwt-go"
 	golangci_lint_runner "github.com/talon-one/golangci-lint-runner"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -27,8 +30,22 @@ func main() {
 	kingpin.Parse()
 
 	logger := logger{}
+
+	// read private key
+	privateKeyBytes, err := ioutil.ReadFile(*privateKeyFlag)
+	if err != nil {
+		logger.Error("could not read private key: %s", err)
+		os.Exit(1)
+	}
+
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeyBytes)
+	if err != nil {
+		logger.Error("could not parse private key: %s", err)
+		os.Exit(1)
+	}
+
 	options := golangci_lint_runner.Options{
-		PrivateKey:    nil,
+		PrivateKey:    privateKey,
 		WebhookSecret: *webhookSecretFlag,
 		AppID:         *appIdFlag,
 		Logger:        logger,
@@ -39,14 +56,14 @@ func main() {
 		},
 	}
 
-	srv, err := golangci_lint_runner.NewServer(options)
+	srv, err := golangci_lint_runner.NewServer(&options)
 	if err != nil {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
 
 	logger.Info("Stating listening on %s\n", *addrFlag)
-	if err := http.ListenAndServe(*addrFlag, nil); err != nil {
+	if err := http.ListenAndServe(*addrFlag, srv.HttpHandler()); err != nil {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}

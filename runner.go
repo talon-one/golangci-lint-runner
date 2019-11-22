@@ -2,7 +2,6 @@ package golangci_lint_runner
 
 import (
 	"fmt"
-	"strings"
 
 	"context"
 	"errors"
@@ -13,7 +12,12 @@ import (
 
 	"path/filepath"
 
+	"crypto/rsa"
+	"strconv"
+	"time"
+
 	"github.com/davecgh/go-spew/spew"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/google/go-github/github"
 	"github.com/talon-one/golangci-lint-runner/internal"
 	"gopkg.in/src-d/go-git.v4"
@@ -43,11 +47,11 @@ type Runner struct {
 	Installation *github.Installation
 	PullRequest  *github.PullRequest
 
-	appClient  *github.Client
-	repoClient *github.Client
+	appClient          *github.Client
+	installationClient *github.Client
 
-	meta       MetaData
-	cloneToken *github.InstallationToken
+	meta              MetaData
+	installationToken *github.InstallationToken
 
 	Options       *Options
 	linterOptions *LinterOptions
@@ -65,26 +69,42 @@ func NewRunner(context context.Context, installation *github.Installation, pullR
 	}
 
 	var err error
-	runner.appClient, runner.repoClient, err = internal.MakeClients(options.AppID, runner.meta.InstallationID, options.PrivateKey)
+	runner.appClient, err = makeAppClient(runner.Options.AppID, options.PrivateKey)
 	if err != nil {
 		return nil, internal.WireError{
-			PrivateError: fmt.Errorf("unable to make client: %w", err),
+			PrivateError: fmt.Errorf("unable to create client"),
 		}
 	}
 
 	options.Logger.Debug("creating installation token")
 	// todo: we can store this token for a later use
-	runner.cloneToken, _, err = runner.appClient.Apps.CreateInstallationToken(context, runner.meta.InstallationID)
+	runner.installationToken, _, err = runner.appClient.Apps.CreateInstallationToken(context, runner.meta.InstallationID)
 	if err != nil {
 		return nil, internal.WireError{
 			PrivateError: fmt.Errorf("unable to create installation token: %w", err),
 		}
 	}
-	if runner.cloneToken.GetToken() == "" {
+	if runner.installationToken.GetToken() == "" {
 		return nil, internal.WireError{
 			PrivateError: errors.New("unable to get installation token"),
 		}
 	}
+
+	runner.installationClient, err = makeInstallationClient(runner.installationToken)
+	if err != nil {
+		return nil, internal.WireError{
+			PrivateError: fmt.Errorf("unable to create client"),
+		}
+	}
+
+	// test permissions
+	// _, _, err = runner.installationClient.PullRequests.Get(context, pullRequest.GetHead().GetUser().GetLogin(), pullRequest.GetHead().GetRepo().GetName(), pullRequest.GetNumber())
+	// if err != nil {
+	// 	return nil, internal.WireError{
+	// 		PublicError:  errors.New("permissions failed (installationClient)"),
+	// 		PrivateError: fmt.Errorf("permissions failed (installationClient): %w", err),
+	// 	}
+	// }
 
 	return &runner, nil
 }
@@ -107,7 +127,7 @@ func (runner *Runner) Run() error {
 
 	// todo: replace github.com with some response from api
 	repoDir := filepath.Join(workDir, "src", "github.com", runner.meta.Head.FullName)
-	if err := os.MkdirAll(repoDir, 0766); err != nil {
+	if err := os.MkdirAll(repoDir, 0744); err != nil {
 		return fmt.Errorf("unable to create repo %s directory: %w", repoDir, err)
 	}
 	runner.Options.Logger.Debug("repo directory is %s", repoDir)
@@ -165,7 +185,7 @@ func (runner *Runner) Run() error {
 
 	runner.Options.Logger.Debug("creating review")
 	runner.Options.Logger.Debug(spew.Sdump(reviewRequest))
-	_, response, err := runner.appClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
+	_, response, err := runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review: %w", err)
 	}
@@ -177,20 +197,12 @@ func (runner *Runner) Run() error {
 
 func (runner *Runner) downloadPatch(patchFile string) error {
 	runner.Options.Logger.Debug("downloading patch file")
-	s, _, err := runner.appClient.PullRequests.GetRaw(context.Background(), runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.RawOptions{github.Patch})
+	s, _, err := runner.installationClient.PullRequests.GetRaw(context.Background(), runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.RawOptions{github.Patch})
 	if err != nil {
 		return fmt.Errorf("unable to download patch file: %w", err)
 	}
 
-	return ioutil.WriteFile(patchFile, []byte(s), 0766)
-}
-
-func (*Runner) parseOwnerAndRepo(s string) (owner, repo string, err error) {
-	p := strings.SplitN(s, "/", 2)
-	if len(p) == 2 {
-		return p[0], p[1], nil
-	}
-	return "", "", errors.New("unable to parse repository")
+	return ioutil.WriteFile(patchFile, []byte(s), 0744)
 }
 
 func (runner *Runner) clone(repoDir string) error {
@@ -201,7 +213,7 @@ func (runner *Runner) clone(repoDir string) error {
 		Auth: &gitHttp.BasicAuth{
 			// can be anything expect empty
 			Username: "x-access-token",
-			Password: runner.cloneToken.GetToken(),
+			Password: runner.installationToken.GetToken(),
 		},
 		ReferenceName:     plumbing.ReferenceName(branchName),
 		SingleBranch:      true,
@@ -300,4 +312,44 @@ func (Runner) getBranchMeta(branch *github.PullRequestBranch) (BranchMeta, error
 		Ref:       ref,
 		SHA:       sha,
 	}, nil
+}
+
+type appTransport struct {
+	underlyingTransport http.RoundTripper
+	token               string
+}
+
+func (t *appTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Add("Accept", "application/vnd.github.machine-man-preview+json")
+	req.Header.Add("Authorization", "Bearer "+t.token)
+	return t.underlyingTransport.RoundTrip(req)
+}
+
+func makeAppClient(appID int64, privateKey *rsa.PrivateKey) (*github.Client, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.StandardClaims{
+		ExpiresAt: time.Now().Local().Add(time.Minute * 5).Unix(),
+		IssuedAt:  time.Now().Unix(),
+		Issuer:    strconv.FormatInt(appID, 10),
+	})
+
+	tokenString, err := token.SignedString(privateKey)
+	if err != nil {
+		return nil, err
+	}
+	return github.NewClient(&http.Client{Transport: &appTransport{underlyingTransport: http.DefaultTransport, token: tokenString}}), nil
+}
+
+type installationTransport struct {
+	underlyingTransport http.RoundTripper
+	token               string
+}
+
+func (t *installationTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Add("Accept", "application/vnd.github.machine-man-preview+json")
+	req.Header.Add("Authorization", "token "+t.token)
+	return t.underlyingTransport.RoundTrip(req)
+}
+
+func makeInstallationClient(installationToken *github.InstallationToken) (*github.Client, error) {
+	return github.NewClient(&http.Client{Transport: &installationTransport{underlyingTransport: http.DefaultTransport, token: installationToken.GetToken()}}), nil
 }

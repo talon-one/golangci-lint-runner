@@ -53,7 +53,7 @@ func NewServer(options *Options) (*Server, error) {
 	if options.AppID == 0 {
 		return nil, errors.New("AppID must be specified")
 	}
-	if options.Logger != nil {
+	if options.Logger == nil {
 		return nil, errors.New("Logger must be specified")
 	}
 	if options.Timeout <= 0 {
@@ -126,7 +126,7 @@ func (srv *Server) handleEvent(writer http.ResponseWriter, request *http.Request
 	switch e := event.(type) {
 	case *github.PullRequestEvent:
 		return srv.handlePullRequest(writer, request, e)
-	case *github.PingEvent:
+	case *github.PingEvent, *github.InstallationEvent:
 		return nil
 	}
 	srv.Options.Logger.Warn("unhandled event %T", event)
@@ -166,7 +166,7 @@ func (srv *Server) handlePullRequestOpened(writer http.ResponseWriter, request *
 	if err != nil {
 		return internal.WireError{
 			PublicError:  errors.New("unable to create runner"),
-			PrivateError: errors.New("unable to create runner"),
+			PrivateError: fmt.Errorf("unable to create runner: %w", err),
 		}
 	}
 	go func() {
