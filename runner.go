@@ -161,9 +161,9 @@ func (runner *Runner) Run() error {
 	}
 
 	for i := range issues {
-		// if runner.linterOptions.IncludeLinterName {
-		// 	result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
-		// }
+		if runner.linterOptions.IncludeLinterName {
+			issues[i].Text += fmt.Sprintf(" (from %s)", issues[i].Text)
+		}
 
 		// addToList := true
 		// for _, c := range reviewRequest.Comments {
@@ -175,7 +175,7 @@ func (runner *Runner) Run() error {
 		// if addToList {
 		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
 			Path:     github.String(issues[i].FilePath()),
-			Position: github.Int(issues[i].HunkPos),
+			Position: github.Int(issues[i].HunkPos + 1),
 			Body:     github.String(issues[i].Text),
 		})
 		// }
