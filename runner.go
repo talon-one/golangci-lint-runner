@@ -55,6 +55,7 @@ type Runner struct {
 
 	Options       *Options
 	linterOptions *LinterOptions
+	cacheDir      string
 }
 
 func NewRunner(context context.Context, installation *github.Installation, pullRequest *github.PullRequest, options *Options) (*Runner, error) {
@@ -63,9 +64,20 @@ func NewRunner(context context.Context, installation *github.Installation, pullR
 		Installation: installation,
 		PullRequest:  pullRequest,
 		Options:      options,
+		cacheDir:     options.CacheDir,
 	}
 	if err := runner.getMeta(); err != nil {
 		return nil, err
+	}
+
+	if runner.cacheDir == "" {
+		var err error
+		runner.cacheDir, err = ioutil.TempDir("", "golangci-lint-runner-cache")
+		if err != nil {
+			return nil, internal.WireError{
+				PrivateError: fmt.Errorf("unable to create cache dir: %w", err),
+			}
+		}
 	}
 
 	var err error
@@ -144,7 +156,7 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	issues, err := runner.runLinter(patchFile, workDir, repoDir)
+	issues, err := runner.runLinter(runner.cacheDir, patchFile, workDir, repoDir)
 	if err != nil {
 		return err
 	}

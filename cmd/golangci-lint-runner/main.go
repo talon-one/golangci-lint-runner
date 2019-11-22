@@ -19,6 +19,8 @@ var (
 	privateKeyFlag    = kingpin.Flag("private-key", "github private key").Envar("GITHUB_PRIVATE_KEY").Required().ExistingFile()
 	webhookSecretFlag = kingpin.Flag("webhook-secret", "github webhook secret").Envar("GITHUB_WEBHOOK_SECRET").Required().String()
 	appIdFlag         = kingpin.Flag("appid", "github app id").Envar("GITHUB_APP_ID").Required().Int64()
+	queueSizeFlag     = kingpin.Flag("queue-size", "queue size").Envar("QUEUE_SIZE").Default("100").Int()
+	cacheDirFlag      = kingpin.Flag("cache-dir", "cache dir").Envar("CACHE_DIR").String()
 	debugFlag         = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
 )
 var version string
@@ -50,17 +52,32 @@ func main() {
 		AppID:         *appIdFlag,
 		Logger:        logger,
 		Timeout:       0,
+		CacheDir:      *cacheDirFlag,
 		DefaultLinterOptions: golangci_lint_runner.LinterOptions{
 			Linters:           []string{"deadcode", "errcheck", "gosimple", "govet", "ineffassign", "misspell", "staticcheck", "structcheck", "typecheck", "unused", "varcheck"},
 			IncludeLinterName: true,
 		},
 	}
 
-	srv, err := golangci_lint_runner.NewServer(&options)
+	if options.CacheDir == "" {
+		options.CacheDir, err = ioutil.TempDir("", "golangci-lint-server-cache")
+		if err != nil {
+			logger.Error("could not create cache dir: %s", err)
+			os.Exit(1)
+		}
+	}
+
+	if *queueSizeFlag <= 0 {
+		logger.Error("could not use a queue <= 0")
+		os.Exit(1)
+	}
+
+	srv, err := golangci_lint_runner.NewServer(*queueSizeFlag, &options)
 	if err != nil {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
+	defer srv.Close()
 
 	logger.Info("Stating listening on %s", *addrFlag)
 	if err := http.ListenAndServe(*addrFlag, srv.HttpHandler()); err != nil {

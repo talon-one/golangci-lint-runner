@@ -9,12 +9,16 @@ import (
 
 	"context"
 
+	"sync"
+
 	"github.com/google/go-github/github"
 	"github.com/talon-one/golangci-lint-runner/internal"
 )
 
 type Server struct {
-	Options *Options
+	Options      *Options
+	queueStarter sync.Once
+	queue        chan *Runner
 }
 
 type Options struct {
@@ -25,6 +29,7 @@ type Options struct {
 	Logger               Logger
 	Timeout              time.Duration
 	DefaultLinterOptions LinterOptions
+	CacheDir             string
 }
 
 type Logger interface {
@@ -39,7 +44,7 @@ type LinterOptions struct {
 	IncludeLinterName bool
 }
 
-func NewServer(options *Options) (*Server, error) {
+func NewServer(queueSize int, options *Options) (*Server, error) {
 	if options == nil {
 		return nil, errors.New("Options must be specified")
 	}
@@ -57,9 +62,10 @@ func NewServer(options *Options) (*Server, error) {
 		return nil, errors.New("Logger must be specified")
 	}
 	if options.Timeout <= 0 {
-		options.Timeout = time.Minute * 60
+		options.Timeout = time.Minute * 10
 	}
 	return &Server{
+		queue:   make(chan *Runner, queueSize),
 		Options: options,
 	}, nil
 }
@@ -68,6 +74,21 @@ func (srv *Server) HttpHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.handler(srv.handleEvent))
 	return mux
+}
+
+func (srv *Server) startQueue() {
+	srv.queueStarter.Do(func() {
+		for runner := range srv.queue {
+			if err := runner.Run(); err != nil {
+				srv.Options.Logger.Error("runner failed: %s", err.Error())
+			}
+		}
+	})
+}
+
+func (srv *Server) Close() error {
+	close(srv.queue)
+	return nil
 }
 
 type Writer struct {
@@ -169,12 +190,15 @@ func (srv *Server) handlePullRequestOpened(writer http.ResponseWriter, request *
 			PrivateError: fmt.Errorf("unable to create runner: %w", err),
 		}
 	}
-	go func() {
-		if err := runner.Run(); err != nil {
-			srv.Options.Logger.Error("runner failed: %s", err.Error())
-		}
-	}()
-	return nil
 
-	return nil
+	select {
+	case srv.queue <- runner:
+		return nil
+	default:
+		return internal.WireError{
+			StatusCode:   http.StatusServiceUnavailable,
+			PublicError:  errors.New("try again later"),
+			PrivateError: errors.New("queue is full"),
+		}
+	}
 }

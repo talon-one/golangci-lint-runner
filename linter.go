@@ -8,8 +8,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"path/filepath"
-
 	"os"
 
 	"github.com/golangci/golangci-lint/pkg/printers"
@@ -31,7 +29,7 @@ import (
 // 	HunkPos    int
 // }
 
-func (runner *Runner) runLinter(patchFile string, workDir, repoDir string) ([]result.Issue, error) {
+func (runner *Runner) runLinter(cacheDir, patchFile, workDir, repoDir string) ([]result.Issue, error) {
 	args := []string{
 
 		"run",
@@ -46,11 +44,6 @@ func (runner *Runner) runLinter(patchFile string, workDir, repoDir string) ([]re
 
 	for _, linter := range runner.linterOptions.Linters {
 		args = append(args, fmt.Sprintf("--enable=%s", linter))
-	}
-
-	cacheDir := filepath.Join(workDir, "cache")
-	if err := os.Mkdir(cacheDir, 0744); err != nil {
-		return nil, fmt.Errorf("unable to create cache dir %s: %w", cacheDir, err)
 	}
 
 	cmd := exec.Command("golangci-lint", args...)
