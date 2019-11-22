@@ -194,6 +194,25 @@ func (runner *Runner) Run() error {
 			return fmt.Errorf("unable to create review: %w", err)
 		}
 	}
+	if len(result.Issues) <= 0 {
+		reviewRequest := github.PullRequestReviewRequest{
+			CommitID: github.String(runner.meta.Head.SHA),
+			Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
+		}
+		if runner.Options.Approve {
+			reviewRequest.Event = github.String("APPROVE")
+		} else {
+			reviewRequest.Event = github.String("COMMENT")
+		}
+
+		runner.Options.Logger.Debug("creating review")
+		runner.Options.Logger.Debug(spew.Sdump(reviewRequest))
+		_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
+		if err != nil {
+			return fmt.Errorf("unable to create review: %w", err)
+		}
+		return nil
+	}
 
 	min := func(a, b int) int {
 		if a < b {
@@ -209,18 +228,10 @@ func (runner *Runner) Run() error {
 			Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(issues))),
 		}
 
-		if len(issues) <= 0 {
-			if runner.Options.Approve {
-				reviewRequest.Event = github.String("APPROVE")
-			} else {
-				reviewRequest.Event = github.String("COMMENT")
-			}
+		if runner.Options.RequestChanges {
+			reviewRequest.Event = github.String("REQUEST_CHANGES")
 		} else {
-			if runner.Options.RequestChanges {
-				reviewRequest.Event = github.String("REQUEST_CHANGES")
-			} else {
-				reviewRequest.Event = github.String("COMMENT")
-			}
+			reviewRequest.Event = github.String("COMMENT")
 		}
 
 		for i := range issues {
