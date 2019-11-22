@@ -39,6 +39,7 @@ type MetaData struct {
 
 	Head              BranchMeta
 	PullRequestNumber int
+	PullRequestURL    string
 	InstallationID    int64
 }
 
@@ -124,6 +125,7 @@ func NewRunner(context context.Context, installation *github.Installation, pullR
 func (runner *Runner) Run() error {
 	// prepare work directory
 	startTime := time.Now()
+	runner.Options.Logger.Info("starting with pull request %s", runner.meta.PullRequestURL)
 	runner.Options.Logger.Debug("preparing work directory")
 	workDir, err := ioutil.TempDir("", "golangci-lint-runner")
 	if err != nil {
@@ -251,6 +253,11 @@ func (runner *Runner) getMeta() error {
 	runner.meta.PullRequestNumber = runner.PullRequest.GetNumber()
 	if runner.meta.PullRequestNumber == 0 {
 		return errors.New("unable to get number from pull request")
+	}
+
+	runner.meta.PullRequestURL = runner.PullRequest.GetURL()
+	if runner.meta.PullRequestURL == "" {
+		return errors.New("unable to get url from pull request")
 	}
 
 	var err error
