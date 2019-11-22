@@ -18,6 +18,7 @@ import (
 type Server struct {
 	Options      *Options
 	queueStarter sync.Once
+	queueSize    int
 	queue        chan *Runner
 }
 
@@ -67,8 +68,9 @@ func NewServer(queueSize int, options *Options) (*Server, error) {
 		options.Timeout = time.Minute * 10
 	}
 	return &Server{
-		queue:   make(chan *Runner, queueSize),
-		Options: options,
+		queue:     make(chan *Runner, queueSize),
+		queueSize: queueSize,
+		Options:   options,
 	}, nil
 }
 
@@ -201,6 +203,7 @@ func (srv *Server) handlePullRequestOpened(writer http.ResponseWriter, request *
 
 	select {
 	case srv.queue <- runner:
+		srv.Options.Logger.Debug("added job to queue (%d/%d)", len(srv.queue), srv.queueSize)
 		return nil
 	default:
 		return internal.WireError{
