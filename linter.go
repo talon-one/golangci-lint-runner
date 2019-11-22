@@ -20,6 +20,7 @@ func (runner *Runner) runLinter(cacheDir, patchFile, workDir, repoDir string) (*
 		"--issues-exit-code=0",
 		"--disable-all",
 		"--new=false",
+		"--exclude-use-default=false",
 		fmt.Sprintf("--timeout=%s", runner.Options.Timeout.String()),
 		fmt.Sprintf("--new-from-patch=%s", patchFile),
 	}
