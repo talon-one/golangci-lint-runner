@@ -165,9 +165,10 @@ func (runner *Runner) Run() error {
 			issue.Text += fmt.Sprintf(" (from %s)", issue.FromLinter)
 		}
 
+		one := 1
 		comment := github.DraftReviewComment{
 			Path:     &issue.File,
-			Position: &issue.LineNumber,
+			Position: &one,
 			Body:     &issue.Text,
 		}
 
