@@ -160,15 +160,15 @@ func (runner *Runner) Run() error {
 		reviewRequest.Event = github.String("REQUEST_CHANGES")
 	}
 
-	for _, issue := range result.Issues {
+	for i := range result.Issues {
 		if runner.linterOptions.IncludeLinterName {
-			issue.Text += fmt.Sprintf(" (from %s)", issue.FromLinter)
+			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
 		}
 
 		comment := github.DraftReviewComment{
-			Path:     &issue.File,
-			Position: &issue.HunkPos,
-			Body:     &issue.Text,
+			Path:     &result.Issues[i].File,
+			Position: &result.Issues[i].HunkPos,
+			Body:     &result.Issues[i].Text,
 		}
 
 		// addToList := true
