@@ -85,6 +85,7 @@ func (srv *Server) startQueue() {
 
 func (srv *Server) workQueue() {
 	for runner := range srv.queue {
+		runner.Context, _ = context.WithTimeout(context.Background(), srv.Options.Timeout)
 		if err := runner.Run(); err != nil {
 			srv.Options.Logger.Error("runner failed: %s", err.Error())
 		}

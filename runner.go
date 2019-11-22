@@ -123,6 +123,7 @@ func NewRunner(context context.Context, installation *github.Installation, pullR
 
 func (runner *Runner) Run() error {
 	// prepare work directory
+	startTime := time.Now()
 	runner.Options.Logger.Debug("preparing work directory")
 	workDir, err := ioutil.TempDir("", "golangci-lint-runner")
 	if err != nil {
@@ -174,7 +175,7 @@ func (runner *Runner) Run() error {
 
 	for i := range issues {
 		if runner.linterOptions.IncludeLinterName {
-			issues[i].Text += fmt.Sprintf(" (from %s)", issues[i].Text)
+			issues[i].Text += fmt.Sprintf(" (from %s)", issues[i].FromLinter)
 		}
 
 		// addToList := true
@@ -202,6 +203,7 @@ func (runner *Runner) Run() error {
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("unable to create review: expected 200 got %d", response.StatusCode)
 	}
+	runner.Options.Logger.Debug("finished, took %s", time.Now().Sub(startTime).String())
 	return nil
 }
 
