@@ -197,7 +197,7 @@ func (runner *Runner) Run() error {
 
 func (runner *Runner) downloadPatch(patchFile string) error {
 	runner.Options.Logger.Debug("downloading patch file")
-	s, _, err := runner.installationClient.PullRequests.GetRaw(context.Background(), runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.RawOptions{github.Patch})
+	s, _, err := runner.installationClient.PullRequests.GetRaw(context.Background(), runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.RawOptions{github.Diff})
 	if err != nil {
 		return fmt.Errorf("unable to download patch file: %w", err)
 	}
