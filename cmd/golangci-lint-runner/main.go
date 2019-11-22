@@ -58,7 +58,7 @@ func main() {
 		Approve:        *approveFlag,
 		RequestChanges: *requestChangesFlag,
 		DefaultLinterOptions: golangci_lint_runner.LinterOptions{
-			Linters:           []string{"deadcode", "errcheck", "gosimple", "govet", "ineffassign", "misspell", "staticcheck", "structcheck", "typecheck", "unused", "varcheck"},
+			Linters:           []string{"deadcode", "errcheck", "gocritic", "gocyclo", "goimports", "golint", "gosimple", "govet", "ineffassign", "misspell", "nakedret", "prealloc", "staticcheck", "structcheck", "typecheck", "unconvert", "unparam", "unused", "varcheck"},
 			IncludeLinterName: true,
 		},
 	}
