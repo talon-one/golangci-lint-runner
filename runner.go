@@ -285,7 +285,7 @@ func (runner *Runner) getMeta() error {
 		return errors.New("unable to get number from pull request")
 	}
 
-	runner.meta.PullRequestURL = runner.PullRequest.GetURL()
+	runner.meta.PullRequestURL = runner.PullRequest.GetHTMLURL()
 	if runner.meta.PullRequestURL == "" {
 		return errors.New("unable to get url from pull request")
 	}
