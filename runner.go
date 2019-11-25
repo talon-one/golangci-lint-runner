@@ -18,7 +18,8 @@ import (
 
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
+	"encoding/json"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/golangci/golangci-lint/pkg/report"
 	"github.com/google/go-github/github"
@@ -226,14 +227,14 @@ func (runner *Runner) Run() error {
 		// }
 	}
 
-	runner.Options.Logger.Debug("creating review")
-	runner.Options.Logger.Debug(spew.Sdump(reviewRequest))
-	_, response, err := runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
+	buf, err := json.Marshal(reviewRequest)
+	if err != nil {
+		return fmt.Errorf("unable to marshal review: %w", err)
+	}
+	runner.Options.Logger.Debug("creating review: %s", string(buf))
+	_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review: %w", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("unable to create review: expected 200 got %d", response.StatusCode)
 	}
 	runner.Options.Logger.Debug("finished with %d, took %s", runner.meta.PullRequestNumber, time.Now().Sub(startTime).String())
 	return nil
