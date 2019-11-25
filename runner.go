@@ -221,7 +221,7 @@ func (runner *Runner) Run() error {
 		// if addToList {
 		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
 			Path:     github.String(result.Issues[i].FilePath()),
-			Position: github.Int(result.Issues[i].HunkPos + 1),
+			Position: github.Int(result.Issues[i].HunkPos),
 			Body:     github.String(result.Issues[i].Text),
 		})
 		// }
