@@ -232,6 +232,12 @@ func (runner *Runner) Run() error {
 		return fmt.Errorf("unable to marshal review: %w", err)
 	}
 	runner.Options.Logger.Debug("creating review: %s", string(buf))
+
+	if runner.Options.DryRun {
+		runner.Options.Logger.Info("aborting creating review because of dry run")
+		return nil
+	}
+
 	_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review: %w", err)

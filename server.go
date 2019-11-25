@@ -33,6 +33,7 @@ type Options struct {
 	CacheDir             string
 	Approve              bool
 	RequestChanges       bool
+	DryRun               bool
 }
 
 type Logger interface {

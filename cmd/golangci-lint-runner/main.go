@@ -24,6 +24,7 @@ var (
 	approveFlag        = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
 	requestChangesFlag = kingpin.Flag("request-changes", "whether the app should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
 	debugFlag          = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
+	dryRunFlag         = kingpin.Flag("dry-run", "do not actual post on the pr").Envar("DRY_RUN").Bool()
 )
 var version string
 var commit string
@@ -57,6 +58,7 @@ func main() {
 		CacheDir:       *cacheDirFlag,
 		Approve:        *approveFlag,
 		RequestChanges: *requestChangesFlag,
+		DryRun:         *dryRunFlag,
 		DefaultLinterOptions: golangci_lint_runner.LinterOptions{
 			Linters:           []string{"deadcode", "errcheck", "gocritic", "gocyclo", "goimports", "golint", "gosimple", "govet", "ineffassign", "misspell", "nakedret", "prealloc", "staticcheck", "structcheck", "typecheck", "unconvert", "unparam", "unused", "varcheck"},
 			IncludeLinterName: true,
