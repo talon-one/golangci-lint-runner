@@ -60,7 +60,8 @@ func main() {
 		RequestChanges: *requestChangesFlag,
 		DryRun:         *dryRunFlag,
 		DefaultLinterOptions: golangci_lint_runner.LinterOptions{
-			Linters:           []string{"deadcode", "errcheck", "gocritic", "gocyclo", "goimports", "golint", "gosimple", "govet", "ineffassign", "misspell", "nakedret", "prealloc", "staticcheck", "structcheck", "typecheck", "unconvert", "unparam", "unused", "varcheck"},
+			// Linters:           []string{"deadcode", "errcheck", "gocritic", "gocyclo", "goimports", "golint", "gosimple", "govet", "ineffassign", "misspell", "nakedret", "prealloc", "staticcheck", "structcheck", "typecheck", "unconvert", "unparam", "unused", "varcheck"},
+			Linters:           []string{"misspell"},
 			IncludeLinterName: true,
 		},
 	}

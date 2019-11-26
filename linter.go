@@ -124,7 +124,7 @@ func linesChanged(patch io.Reader) (map[string][]pos, error) {
 	var lineNo int    // current line number within chunk
 	var hunkPos int   // current line count since first @@ in file
 	var changes []pos // position of changes
-	var hasHunk bool
+	// var hasHunk bool
 
 	fileChanges := make(map[string][]pos)
 
@@ -142,10 +142,10 @@ func linesChanged(patch io.Reader) (map[string][]pos, error) {
 			}
 			// 6 removes "+++ b/"
 			file = line[6:]
-			if !hasHunk {
-				hunkPos = -1
-				hasHunk = true
-			}
+			// if !hasHunk {
+			hunkPos = -1
+			// hasHunk = true
+			// }
 
 			changes = []pos{}
 		case strings.HasPrefix(line, "@@ "):
