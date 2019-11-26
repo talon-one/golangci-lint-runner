@@ -64,6 +64,26 @@ func (runner *Runner) runLinter(cacheDir, workDir, repoDir string) (*printers.JS
 	return &res, nil
 }
 
+func hasGoCode(patchFile string) (bool, error) {
+	f, err := os.Open(patchFile)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	m, err := linesChanged(f)
+	if err != nil {
+		return false, err
+	}
+
+	for k := range m {
+		if strings.HasSuffix(k, ".go") {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func filterIssues(patchFile string, issues []result.Issue) ([]result.Issue, error) {
 	f, err := os.Open(patchFile)
 	if err != nil {

@@ -163,6 +163,10 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
+	if ok, err := hasGoCode(patchFile); !ok || err != nil {
+		return err
+	}
+
 	result, err := runner.runLinter(runner.cacheDir, workDir, repoDir)
 	if err != nil {
 		return err
