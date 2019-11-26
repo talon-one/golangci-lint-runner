@@ -113,37 +113,41 @@ func Readln(r *bufio.Reader) (string, error) {
 	return string(ln), err
 }
 
+// stolen from revgrep
+// horrible code please change
 //
 // linesChanges returns a map of file names to line numbers being changed.
 // If key is nil, the file has been recently added, else it contains a slice
 // of positions that have been added.
 func linesChanged(patch io.Reader) (map[string][]pos, error) {
-	type state struct {
-		file    string
-		lineNo  int   // current line number within chunk
-		hunkPos int   // current line count since first @@ in file
-		changes []pos // position of changes
-	}
+	var file string
+	var lineNo int    // current line number within chunk
+	var hunkPos int   // current line count since first @@ in file
+	var changes []pos // position of changes
+	var hasHunk bool
 
-	var (
-		s       state
-		changes = make(map[string][]pos)
-	)
+	fileChanges := make(map[string][]pos)
 
 	reader := bufio.NewReader(patch)
 	line, err := Readln(reader)
 	for err == nil {
 		// c.debugf(line)
-		s.lineNo++
-		s.hunkPos++
+		lineNo++
+		hunkPos++
 		switch {
 		case strings.HasPrefix(line, "+++ ") && len(line) > 4:
-			if s.changes != nil {
+			if changes != nil {
 				// record the last state
-				changes[s.file] = s.changes
+				fileChanges[file] = changes
 			}
 			// 6 removes "+++ b/"
-			s = state{file: line[6:], hunkPos: -1, changes: []pos{}}
+			file = line[6:]
+			if !hasHunk {
+				hunkPos = -1
+				hasHunk = true
+			}
+
+			changes = []pos{}
 		case strings.HasPrefix(line, "@@ "):
 			//      @@ -1 +2,4 @@
 			// chdr ^^^^^^^^^^^^^
@@ -156,11 +160,11 @@ func linesChanged(patch io.Reader) (map[string][]pos, error) {
 			if err != nil {
 				panic(err)
 			}
-			s.lineNo = int(cstart) - 1 // -1 as cstart is the next line number
+			lineNo = int(cstart) - 1 // -1 as cstart is the next line number
 		case strings.HasPrefix(line, "-"):
-			s.lineNo--
+			lineNo--
 		case strings.HasPrefix(line, "+"):
-			s.changes = append(s.changes, pos{lineNo: s.lineNo, hunkPos: s.hunkPos})
+			changes = append(changes, pos{lineNo: lineNo, hunkPos: hunkPos})
 		}
 		line, err = Readln(reader)
 	}
@@ -168,6 +172,6 @@ func linesChanged(patch io.Reader) (map[string][]pos, error) {
 		err = nil
 	}
 	// record the last state
-	changes[s.file] = s.changes
-	return changes, err
+	fileChanges[file] = changes
+	return fileChanges, err
 }
