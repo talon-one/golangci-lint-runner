@@ -1,5 +1,3 @@
-# github.com/DataDog/ghinstallation v0.1.2
-github.com/DataDog/ghinstallation
 # github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
@@ -20,9 +18,9 @@ github.com/emirpasic/gods/lists
 github.com/fatih/color
 # github.com/golangci/golangci-lint v1.21.0
 github.com/golangci/golangci-lint/pkg/printers
-github.com/golangci/golangci-lint/pkg/logutils
 github.com/golangci/golangci-lint/pkg/report
 github.com/golangci/golangci-lint/pkg/result
+github.com/golangci/golangci-lint/pkg/logutils
 github.com/golangci/golangci-lint/pkg/exitcodes
 # github.com/google/go-github v17.0.0+incompatible
 github.com/google/go-github/github
@@ -56,6 +54,8 @@ github.com/stretchr/objx
 # github.com/stretchr/testify v1.4.0
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/assert
+# github.com/waigani/diffparser v0.0.0-20190828052634-7391f219313d
+github.com/waigani/diffparser
 # github.com/xanzy/ssh-agent v0.2.1
 github.com/xanzy/ssh-agent
 # golang.org/x/crypto v0.0.0-20190923035154-9ee001bba392
