@@ -197,10 +197,7 @@ func (runner *Runner) Run() error {
 
 	runner.Options.Logger.Info("golangci-lint reported %d issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
 
-	reviewRequest := github.PullRequestReviewRequest{
-		CommitID: github.String(runner.meta.Head.SHA),
-		Body:     github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues))),
-	}
+	reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
 
 	if len(warnings) > 0 {
 		var sb strings.Builder
