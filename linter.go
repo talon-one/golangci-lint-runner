@@ -164,6 +164,9 @@ func linesChanged(patch io.Reader) (map[string][]pos, error) {
 		}
 		line, err = Readln(reader)
 	}
+	if err == io.EOF {
+		err = nil
+	}
 	// record the last state
 	changes[s.file] = s.changes
 	return changes, err
