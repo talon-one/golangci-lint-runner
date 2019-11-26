@@ -163,8 +163,19 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	if ok, err := hasGoCode(patchFile); !ok || err != nil {
-		return err
+	reviewRequest := github.PullRequestReviewRequest{
+		CommitID: github.String(runner.meta.Head.SHA),
+	}
+
+	goCode, err := hasGoCode(patchFile)
+	if err != nil {
+		return fmt.Errorf("unable to detect go code: %w", err)
+	}
+	if !goCode {
+		runner.Options.Logger.Debug("no go code present")
+		reviewRequest.Body = github.String("No go code in changes")
+		reviewRequest.Event = github.String("COMMENT")
+		return runner.sendReview(&reviewRequest)
 	}
 
 	result, err := runner.runLinter(runner.cacheDir, workDir, repoDir)
@@ -238,6 +249,14 @@ func (runner *Runner) Run() error {
 		// }
 	}
 
+	if err := runner.sendReview(&reviewRequest); err != nil {
+		return fmt.Errorf("unable to send review: %w", err)
+	}
+	runner.Options.Logger.Debug("finished with %d, took %s", runner.meta.PullRequestNumber, time.Now().Sub(startTime).String())
+	return nil
+}
+
+func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest) error {
 	buf, err := json.Marshal(reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to marshal review: %w", err)
@@ -253,7 +272,6 @@ func (runner *Runner) Run() error {
 	if err != nil {
 		return fmt.Errorf("unable to create review: %w", err)
 	}
-	runner.Options.Logger.Debug("finished with %d, took %s", runner.meta.PullRequestNumber, time.Now().Sub(startTime).String())
 	return nil
 }
 
