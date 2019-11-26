@@ -265,7 +265,7 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 		return nil
 	}
 
-	_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &reviewRequest)
+	_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review: %w", err)
 	}
