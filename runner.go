@@ -163,7 +163,7 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	result, err := runner.runLinter(runner.cacheDir, patchFile, workDir, repoDir)
+	result, err := runner.runLinter(runner.cacheDir, workDir, repoDir)
 	if err != nil {
 		return err
 	}
@@ -171,6 +171,13 @@ func (runner *Runner) Run() error {
 	var warnings []report.Warning
 	if result.Report != nil {
 		warnings = result.Report.Warnings
+	}
+	runner.Options.Logger.Debug("golangci-lint reported %d (unfiltered) issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
+
+	runner.Options.Logger.Debug("filtering issues")
+	result.Issues, err = filterIssues(patchFile, result.Issues)
+	if err != nil {
+		return err
 	}
 
 	runner.Options.Logger.Info("golangci-lint reported %d issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)

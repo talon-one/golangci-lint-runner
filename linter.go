@@ -8,10 +8,16 @@ import (
 
 	"os"
 
+	"bufio"
+	"io"
+	"strconv"
+	"strings"
+
 	"github.com/golangci/golangci-lint/pkg/printers"
+	"github.com/golangci/golangci-lint/pkg/result"
 )
 
-func (runner *Runner) runLinter(cacheDir, patchFile, workDir, repoDir string) (*printers.JSONResult, error) {
+func (runner *Runner) runLinter(cacheDir, workDir, repoDir string) (*printers.JSONResult, error) {
 	args := []string{
 
 		"run",
@@ -19,10 +25,10 @@ func (runner *Runner) runLinter(cacheDir, patchFile, workDir, repoDir string) (*
 		"--out-format=json",
 		"--issues-exit-code=0",
 		"--disable-all",
-		"--new=false",
+		// "--new=false",
 		"--exclude-use-default=false",
 		fmt.Sprintf("--timeout=%s", runner.Options.Timeout.String()),
-		fmt.Sprintf("--new-from-patch=%s", patchFile),
+		// fmt.Sprintf("--new-from-patch=%s", patchFile),
 	}
 
 	for _, linter := range runner.linterOptions.Linters {
@@ -56,4 +62,92 @@ func (runner *Runner) runLinter(cacheDir, patchFile, workDir, repoDir string) (*
 	}
 
 	return &res, nil
+}
+
+func filterIssues(patchFile string, issues []result.Issue) ([]result.Issue, error) {
+	f, err := os.Open(patchFile)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	m := linesChanged(f)
+
+	var filteredIssues []result.Issue
+	for _, i := range issues {
+		positions, ok := m[i.FilePath()]
+		if !ok {
+			continue
+		}
+		for _, pos := range positions {
+			if pos.lineNo == i.Line() {
+				i.HunkPos = pos.hunkPos
+				filteredIssues = append(filteredIssues, i)
+				break
+			}
+		}
+	}
+	return filteredIssues, nil
+}
+
+type pos struct {
+	lineNo  int // line number
+	hunkPos int // position relative to first @@ in file
+}
+
+// linesChanges returns a map of file names to line numbers being changed.
+// If key is nil, the file has been recently added, else it contains a slice
+// of positions that have been added.
+func linesChanged(patch io.Reader) map[string][]pos {
+	type state struct {
+		file    string
+		lineNo  int   // current line number within chunk
+		hunkPos int   // current line count since first @@ in file
+		changes []pos // position of changes
+	}
+
+	var (
+		s       state
+		changes = make(map[string][]pos)
+	)
+
+	scanner := bufio.NewScanner(patch)
+	for scanner.Scan() {
+		line := scanner.Text() // TODO scanner.Bytes()
+		// c.debugf(line)
+		s.lineNo++
+		s.hunkPos++
+		switch {
+		case strings.HasPrefix(line, "+++ ") && len(line) > 4:
+			if s.changes != nil {
+				// record the last state
+				changes[s.file] = s.changes
+			}
+			// 6 removes "+++ b/"
+			s = state{file: line[6:], hunkPos: -1, changes: []pos{}}
+		case strings.HasPrefix(line, "@@ "):
+			//      @@ -1 +2,4 @@
+			// chdr ^^^^^^^^^^^^^
+			// ahdr       ^^^^
+			// cstart      ^
+			chdr := strings.Split(line, " ")
+			ahdr := strings.Split(chdr[2], ",")
+			// [1:] to remove leading plus
+			cstart, err := strconv.ParseUint(ahdr[0][1:], 10, 64)
+			if err != nil {
+				panic(err)
+			}
+			s.lineNo = int(cstart) - 1 // -1 as cstart is the next line number
+		case strings.HasPrefix(line, "-"):
+			s.lineNo--
+		case strings.HasPrefix(line, "+"):
+			s.changes = append(s.changes, pos{lineNo: s.lineNo, hunkPos: s.hunkPos})
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+	}
+	// record the last state
+	changes[s.file] = s.changes
+
+	return changes
 }
