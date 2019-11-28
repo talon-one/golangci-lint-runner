@@ -216,6 +216,7 @@ func (srv *Server) handlePullRequestOpened(writer http.ResponseWriter, request *
 	}
 
 	opts := *srv.Options.Options
+	opts.Context = ctx
 	opts.CloneToken = installationToken.GetToken()
 	if opts.CloneToken == "" {
 		return internal.WireError{
