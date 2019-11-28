@@ -10,4 +10,4 @@ FROM golangci/golangci-lint:v1.21.0
 
 COPY --from=BUILDER /app/golangci-lint-runner /bin/golangci-lint-runner
 
-CMD ["/bin/golangci-lint-runner", "server"]
+CMD ["/bin/golangci-lint-runner"]
