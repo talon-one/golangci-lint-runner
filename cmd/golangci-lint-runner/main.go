@@ -108,8 +108,8 @@ func options(logger logger) *golangci_lint_runner.Options {
 					"unmarshal",
 					"unreachable",
 					"unsafeptr",
-					"unusedresult"},
-
+					"unusedresult",
+				},
 				Disable:    []string{"unreachable"},
 				EnableAll:  false,
 				DisableAll: false,
@@ -138,7 +138,8 @@ func options(logger logger) *golangci_lint_runner.Options {
 				ForLoops:   false,
 			},
 			Gocritic: config.GocriticSettings{
-				EnabledChecks: []string{"assignOp",
+				EnabledChecks: []string{
+					"assignOp",
 					"captLocal",
 					"defaultCaseOrder",
 					"elseif",
