@@ -1,7 +1,6 @@
 package golangci_lint_runner
 
 import (
-	"crypto/rsa"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,29 +10,26 @@ import (
 
 	"sync"
 
+	"crypto/rsa"
+
 	"github.com/google/go-github/github"
 	"github.com/talon-one/golangci-lint-runner/internal"
 )
 
 type Server struct {
-	Options      *Options
+	Options      *ServerOptions
 	queueStarter sync.Once
 	queueSize    int
 	queue        chan *Runner
 }
 
-type Options struct {
-	PrivateKey           *rsa.PrivateKey
-	WebhookSecret        string
-	webHookSecret        []byte
-	AppID                int64
-	Logger               Logger
-	Timeout              time.Duration
-	DefaultLinterOptions LinterOptions
-	CacheDir             string
-	Approve              bool
-	RequestChanges       bool
-	DryRun               bool
+type ServerOptions struct {
+	PrivateKey    *rsa.PrivateKey
+	WebhookSecret string
+	webHookSecret []byte
+	AppID         int64
+	QueueSize     int
+	*Options
 }
 
 type Logger interface {
@@ -48,7 +44,7 @@ type LinterOptions struct {
 	IncludeLinterName bool
 }
 
-func NewServer(queueSize int, options *Options) (*Server, error) {
+func NewServer(options *ServerOptions) (*Server, error) {
 	if options == nil {
 		return nil, errors.New("Options must be specified")
 	}
@@ -69,8 +65,8 @@ func NewServer(queueSize int, options *Options) (*Server, error) {
 		options.Timeout = time.Minute * 10
 	}
 	return &Server{
-		queue:     make(chan *Runner, queueSize),
-		queueSize: queueSize,
+		queue:     make(chan *Runner, options.QueueSize),
+		queueSize: options.QueueSize,
 		Options:   options,
 	}, nil
 }
@@ -90,7 +86,7 @@ func (srv *Server) startQueue() {
 
 func (srv *Server) workQueue() {
 	for runner := range srv.queue {
-		runner.Context, _ = context.WithTimeout(context.Background(), srv.Options.Timeout)
+		runner.Options.Context, _ = context.WithTimeout(context.Background(), srv.Options.Timeout)
 		if err := runner.Run(); err != nil {
 			srv.Options.Logger.Error("runner failed: %s", err.Error())
 		}
@@ -193,8 +189,50 @@ func (srv *Server) handlePullRequestOpened(writer http.ResponseWriter, request *
 			PrivateError: errors.New("unable to get installation from event"),
 		}
 	}
+
+	appClient, err := makeAppClient(srv.Options.AppID, srv.Options.PrivateKey)
+	if err != nil {
+		return internal.WireError{
+			PrivateError: fmt.Errorf("unable to create client"),
+		}
+	}
+
+	installationID := installation.GetID()
+	if installationID == 0 {
+		return internal.WireError{
+			PrivateError: errors.New("unable to get id from installation"),
+		}
+	}
+
 	ctx, _ := context.WithTimeout(context.Background(), srv.Options.Timeout)
-	runner, err := NewRunner(ctx, installation, pr, srv.Options)
+
+	srv.Options.Logger.Debug("creating installation token")
+	// todo: we can store this token for a later use
+	installationToken, _, err := appClient.Apps.CreateInstallationToken(ctx, installationID)
+	if err != nil {
+		return internal.WireError{
+			PrivateError: fmt.Errorf("unable to create installation token: %w", err),
+		}
+	}
+
+	opts := *srv.Options.Options
+	opts.CloneToken = installationToken.GetToken()
+	if opts.CloneToken == "" {
+		return internal.WireError{
+			PrivateError: errors.New("unable to get installation token"),
+		}
+	}
+
+	opts.Client, err = makeInstallationClient(opts.CloneToken)
+	if err != nil {
+		return internal.WireError{
+			PrivateError: fmt.Errorf("unable to create client"),
+		}
+	}
+
+	opts.PullRequest = pr
+
+	runner, err := NewRunner(opts)
 	if err != nil {
 		return internal.WireError{
 			PublicError:  errors.New("unable to create runner"),

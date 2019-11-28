@@ -6,4 +6,4 @@ type WireError struct {
 	PrivateError error
 }
 
-func (WireError) Error() string { return "" }
+func (e WireError) Error() string { return e.PublicError.Error() }

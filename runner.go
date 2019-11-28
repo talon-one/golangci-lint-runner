@@ -29,6 +29,23 @@ import (
 	gitHttp "gopkg.in/src-d/go-git.v4/plumbing/transport/http"
 )
 
+type Options struct {
+	Client            *github.Client
+	CloneToken        string
+	Context           context.Context
+	PullRequest       *github.PullRequest
+	Name              string
+	Owner             string
+	PullRequestNumber int
+	Logger            Logger
+	Timeout           time.Duration
+	LinterOptions     LinterOptions
+	CacheDir          string
+	Approve           bool
+	RequestChanges    bool
+	DryRun            bool
+}
+
 type BranchMeta struct {
 	OwnerName string
 	RepoName  string
@@ -48,36 +65,33 @@ type MetaData struct {
 }
 
 type Runner struct {
-	Context      context.Context
-	Installation *github.Installation
-	PullRequest  *github.PullRequest
-
-	appClient          *github.Client
-	installationClient *github.Client
-
-	meta              MetaData
-	installationToken *github.InstallationToken
-
-	Options       *Options
-	linterOptions *LinterOptions
-	cacheDir      string
+	meta    MetaData
+	Options *Options
 }
 
-func NewRunner(context context.Context, installation *github.Installation, pullRequest *github.PullRequest, options *Options) (*Runner, error) {
-	runner := Runner{
-		Context:      context,
-		Installation: installation,
-		PullRequest:  pullRequest,
-		Options:      options,
-		cacheDir:     options.CacheDir,
+func NewRunner(options Options) (*Runner, error) {
+	if options.Client == nil {
+		return nil, errors.New("Client must be specified")
 	}
-	if err := runner.getMeta(); err != nil {
-		return nil, err
+	if options.CloneToken == "" {
+		return nil, errors.New("CloneToken must be specified")
+	}
+	if options.Context == nil {
+		return nil, errors.New("Context must be specified")
+	}
+	if options.Logger == nil {
+		return nil, errors.New("Logger must be specified")
+	}
+	if options.Timeout <= 0 {
+		options.Timeout = time.Minute * 10
+	}
+	runner := Runner{
+		Options: &options,
 	}
 
-	if runner.cacheDir == "" {
+	if runner.Options.CacheDir == "" {
 		var err error
-		runner.cacheDir, err = ioutil.TempDir("", "golangci-lint-runner-cache")
+		runner.Options.CacheDir, err = ioutil.TempDir("", "golangci-lint-runner-cache-")
 		if err != nil {
 			return nil, internal.WireError{
 				PrivateError: fmt.Errorf("unable to create cache dir: %w", err),
@@ -85,43 +99,21 @@ func NewRunner(context context.Context, installation *github.Installation, pullR
 		}
 	}
 
-	var err error
-	runner.appClient, err = makeAppClient(runner.Options.AppID, options.PrivateKey)
-	if err != nil {
-		return nil, internal.WireError{
-			PrivateError: fmt.Errorf("unable to create client"),
+	if runner.Options.PullRequest == nil {
+		var err error
+		runner.Options.Logger.Debug("getting pull request")
+		runner.Options.PullRequest, _, err = runner.Options.Client.PullRequests.Get(runner.Options.Context, runner.Options.Owner, runner.Options.Name, runner.Options.PullRequestNumber)
+		if err != nil {
+			return nil, internal.WireError{
+				PublicError:  errors.New("unable to get pull request"),
+				PrivateError: fmt.Errorf("unable to get pull request: %w", err),
+			}
 		}
 	}
 
-	options.Logger.Debug("creating installation token")
-	// todo: we can store this token for a later use
-	runner.installationToken, _, err = runner.appClient.Apps.CreateInstallationToken(context, runner.meta.InstallationID)
-	if err != nil {
-		return nil, internal.WireError{
-			PrivateError: fmt.Errorf("unable to create installation token: %w", err),
-		}
+	if err := runner.getMeta(); err != nil {
+		return nil, err
 	}
-	if runner.installationToken.GetToken() == "" {
-		return nil, internal.WireError{
-			PrivateError: errors.New("unable to get installation token"),
-		}
-	}
-
-	runner.installationClient, err = makeInstallationClient(runner.installationToken)
-	if err != nil {
-		return nil, internal.WireError{
-			PrivateError: fmt.Errorf("unable to create client"),
-		}
-	}
-
-	// test permissions
-	// _, _, err = runner.installationClient.PullRequests.Get(context, pullRequest.GetHead().GetUser().GetLogin(), pullRequest.GetHead().GetRepo().GetName(), pullRequest.GetNumber())
-	// if err != nil {
-	// 	return nil, internal.WireError{
-	// 		PublicError:  errors.New("permissions failed (installationClient)"),
-	// 		PrivateError: fmt.Errorf("permissions failed (installationClient): %w", err),
-	// 	}
-	// }
 
 	return &runner, nil
 }
@@ -131,12 +123,33 @@ func (runner *Runner) Run() error {
 	startTime := time.Now()
 	runner.Options.Logger.Info("starting with pull request %s", runner.meta.PullRequestURL)
 	runner.Options.Logger.Debug("preparing work directory")
-	workDir, err := ioutil.TempDir("", "golangci-lint-runner")
+	workDir, err := ioutil.TempDir("", "golangci-lint-runner-work-")
 	if err != nil {
 		return fmt.Errorf("unable to create work directory: %w", err)
 	}
 	// remove work directory on end
 	defer func() {
+		uid := os.Getuid()
+		gid := os.Getegid()
+
+		err := filepath.Walk(workDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				return nil
+			}
+			if err = os.Chown(path, uid, gid); err != nil {
+				return err
+			}
+			if err = os.Chmod(path, 0700); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			runner.Options.Logger.Error("unable to change permissions for work directory: %w", err)
+		}
 		if err := os.RemoveAll(workDir); err != nil {
 			runner.Options.Logger.Error("unable to delete work directory: %w", err)
 		}
@@ -156,7 +169,6 @@ func (runner *Runner) Run() error {
 	}
 
 	//todo: read linte roptions from repository, for now just copy the defaults
-	runner.linterOptions = &runner.Options.DefaultLinterOptions
 
 	patchFile := filepath.Join(workDir, "patch")
 	if err := runner.downloadPatch(patchFile); err != nil {
@@ -178,7 +190,7 @@ func (runner *Runner) Run() error {
 		return runner.sendReview(&reviewRequest)
 	}
 
-	result, err := runner.runLinter(runner.cacheDir, workDir, repoDir)
+	result, err := runner.runLinter(runner.Options.CacheDir, workDir, repoDir)
 	if err != nil {
 		return err
 	}
@@ -226,7 +238,7 @@ func (runner *Runner) Run() error {
 	}
 
 	for i := range result.Issues {
-		if runner.linterOptions.IncludeLinterName {
+		if runner.Options.LinterOptions.IncludeLinterName {
 			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
 		}
 
@@ -265,7 +277,7 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 		return nil
 	}
 
-	_, _, err = runner.installationClient.PullRequests.CreateReview(runner.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, reviewRequest)
+	_, _, err = runner.Options.Client.PullRequests.CreateReview(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review: %w", err)
 	}
@@ -274,7 +286,7 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 
 func (runner *Runner) downloadPatch(patchFile string) error {
 	runner.Options.Logger.Debug("downloading patch file")
-	s, _, err := runner.installationClient.PullRequests.GetRaw(context.Background(), runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.RawOptions{github.Diff})
+	s, _, err := runner.Options.Client.PullRequests.GetRaw(context.Background(), runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.RawOptions{github.Diff})
 	if err != nil {
 		return fmt.Errorf("unable to download patch file: %w", err)
 	}
@@ -285,12 +297,12 @@ func (runner *Runner) downloadPatch(patchFile string) error {
 func (runner *Runner) clone(repoDir string) error {
 	branchName := fmt.Sprintf("refs/heads/%s", runner.meta.Head.Ref)
 	runner.Options.Logger.Debug("cloning %s (%s) to %s", runner.meta.Head.CloneURL, branchName, repoDir)
-	_, err := git.PlainCloneContext(runner.Context, repoDir, false, &git.CloneOptions{
+	_, err := git.PlainCloneContext(runner.Options.Context, repoDir, false, &git.CloneOptions{
 		URL: runner.meta.Head.CloneURL,
 		Auth: &gitHttp.BasicAuth{
 			// can be anything expect empty
 			Username: "x-access-token",
-			Password: runner.installationToken.GetToken(),
+			Password: runner.Options.CloneToken,
 		},
 		ReferenceName:     plumbing.ReferenceName(branchName),
 		SingleBranch:      true,
@@ -308,23 +320,18 @@ func (runner *Runner) clone(repoDir string) error {
 func (runner *Runner) getMeta() error {
 	runner.Options.Logger.Debug("get meta")
 
-	runner.meta.InstallationID = runner.Installation.GetID()
-	if runner.meta.InstallationID == 0 {
-		return errors.New("unable to get id from installation")
-	}
-
-	runner.meta.PullRequestNumber = runner.PullRequest.GetNumber()
+	runner.meta.PullRequestNumber = runner.Options.PullRequest.GetNumber()
 	if runner.meta.PullRequestNumber == 0 {
 		return errors.New("unable to get number from pull request")
 	}
 
-	runner.meta.PullRequestURL = runner.PullRequest.GetHTMLURL()
+	runner.meta.PullRequestURL = runner.Options.PullRequest.GetHTMLURL()
 	if runner.meta.PullRequestURL == "" {
 		return errors.New("unable to get url from pull request")
 	}
 
 	var err error
-	base := runner.PullRequest.GetBase()
+	base := runner.Options.PullRequest.GetBase()
 	if base == nil {
 		return errors.New("unable to get base")
 	}
@@ -333,7 +340,7 @@ func (runner *Runner) getMeta() error {
 		return fmt.Errorf("unable to get branch meta for base: %w", err)
 	}
 
-	head := runner.PullRequest.GetHead()
+	head := runner.Options.PullRequest.GetHead()
 	if head == nil {
 		return errors.New("unable to get head")
 	}
@@ -432,6 +439,6 @@ func (t *installationTransport) RoundTrip(req *http.Request) (*http.Response, er
 	return t.underlyingTransport.RoundTrip(req)
 }
 
-func makeInstallationClient(installationToken *github.InstallationToken) (*github.Client, error) {
-	return github.NewClient(&http.Client{Transport: &installationTransport{underlyingTransport: http.DefaultTransport, token: installationToken.GetToken()}}), nil
+func makeInstallationClient(token string) (*github.Client, error) {
+	return github.NewClient(&http.Client{Transport: &installationTransport{underlyingTransport: http.DefaultTransport, token: token}}), nil
 }

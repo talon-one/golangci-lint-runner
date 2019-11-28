@@ -19,26 +19,32 @@ import (
 
 func (runner *Runner) runLinter(cacheDir, workDir, repoDir string) (*printers.JSONResult, error) {
 	args := []string{
-
 		"run",
 		"--no-config",
 		"--out-format=json",
 		"--issues-exit-code=0",
 		"--disable-all",
-		// "--new=false",
+		"--max-issues-per-linter=0",
+		"--max-same-issues=0",
 		"--exclude-use-default=false",
 		fmt.Sprintf("--timeout=%s", runner.Options.Timeout.String()),
-		// fmt.Sprintf("--new-from-patch=%s", patchFile),
 	}
 
-	for _, linter := range runner.linterOptions.Linters {
+	for _, linter := range runner.Options.LinterOptions.Linters {
 		args = append(args, fmt.Sprintf("--enable=%s", linter))
 	}
 
 	cmd := exec.Command("golangci-lint", args...)
-	runner.Options.Logger.Debug("running linter %v in %s", cmd.Args, repoDir)
 	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("GOPATH=%s", workDir), fmt.Sprintf("GOLANGCI_LINT_CACHE=%s", cacheDir))
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"GOPATH=" + workDir,
+		"GOCACHE=" + cacheDir,
+		"GOROOT=" + os.Getenv("GOROOT"),
+		"HOME=" + cacheDir,
+	}
+
+	runner.Options.Logger.Debug("running linter %v in %s %v", cmd.Args, repoDir, cmd.Env)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -116,11 +122,11 @@ type pos struct {
 	hunkPos int // position relative to first @@ in file
 }
 
-// Readln returns a single line (without the ending \n)
+// readLine returns a single line (without the ending \n)
 // from the input buffered reader.
 // An error is returned iff there is an error with the
 // buffered reader.
-func Readln(r *bufio.Reader) (string, error) {
+func readLine(r *bufio.Reader) (string, error) {
 	var (
 		isPrefix bool  = true
 		err      error = nil
@@ -149,7 +155,7 @@ func linesChanged(patch io.Reader) (map[string][]pos, error) {
 	fileChanges := make(map[string][]pos)
 
 	reader := bufio.NewReader(patch)
-	line, err := Readln(reader)
+	line, err := readLine(reader)
 	for err == nil {
 		// c.debugf(line)
 		lineNo++
@@ -186,7 +192,7 @@ func linesChanged(patch io.Reader) (map[string][]pos, error) {
 		case strings.HasPrefix(line, "+"):
 			changes = append(changes, pos{lineNo: lineNo, hunkPos: hunkPos})
 		}
-		line, err = Readln(reader)
+		line, err = readLine(reader)
 	}
 	if err == io.EOF {
 		err = nil

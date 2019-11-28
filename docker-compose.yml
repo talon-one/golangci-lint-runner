@@ -8,4 +8,3 @@ services:
       - GITHUB_PRIVATE_KEY=/path/to/github-app/private-key
       - GITHUB_WEBHOOK_SECRET=SECRET-THAT-YOU-SPECIFIED-IN-THE-APP
       - GITHUB_APP_ID=GUTHUB-APPID
-    command: golangci-lint-runner
