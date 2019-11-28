@@ -410,7 +410,7 @@ func (Runner) getBranchMeta(branch *github.PullRequestBranch) (BranchMeta, error
 }
 
 func (r *Runner) readRepoConfig(workDir string) error {
-	p := filepath.Join(workDir, ".golangci-lint.yml")
+	p := filepath.Join(workDir, ".golangci.yml")
 	file, err := os.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {
