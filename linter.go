@@ -2,7 +2,6 @@ package golangci_lint_runner
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 
@@ -13,28 +12,22 @@ import (
 	"strconv"
 	"strings"
 
+	"path/filepath"
+
+	"errors"
+
 	"github.com/golangci/golangci-lint/pkg/printers"
 	"github.com/golangci/golangci-lint/pkg/result"
+	jsoniter "github.com/json-iterator/go"
 )
 
 func (runner *Runner) runLinter(cacheDir, workDir, repoDir string) (*printers.JSONResult, error) {
-	args := []string{
-		"run",
-		"--no-config",
-		"--out-format=json",
-		"--issues-exit-code=0",
-		"--disable-all",
-		"--max-issues-per-linter=0",
-		"--max-same-issues=0",
-		"--exclude-use-default=false",
-		fmt.Sprintf("--timeout=%s", runner.Options.Timeout.String()),
+	configPath, err := runner.generateConfig(workDir)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, linter := range runner.Options.LinterOptions.Linters {
-		args = append(args, fmt.Sprintf("--enable=%s", linter))
-	}
-
-	cmd := exec.Command("golangci-lint", args...)
+	cmd := exec.Command("golangci-lint", "run", "--config="+configPath)
 	cmd.Dir = repoDir
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
@@ -49,9 +42,18 @@ func (runner *Runner) runLinter(cacheDir, workDir, repoDir string) (*printers.JS
 	out, err := cmd.Output()
 	if err != nil {
 		if e, ok := err.(*exec.ExitError); ok {
-			if len(e.Stderr) > 0 {
-				err = errors.New(e.ProcessState.String() + "\nStderr: " + string(e.Stderr))
+			var sb strings.Builder
+			if len(out) > 0 {
+				sb.WriteString("\nStdout:\n")
+				sb.Write(out)
+				sb.WriteRune('\n')
 			}
+			if len(e.Stderr) > 0 {
+				sb.WriteString("\nStderr:\n")
+				sb.Write(e.Stderr)
+				sb.WriteRune('\n')
+			}
+			err = errors.New(e.String() + sb.String())
 		}
 
 		return nil, fmt.Errorf("golangci-lint got error: %w", err)
@@ -68,6 +70,67 @@ func (runner *Runner) runLinter(cacheDir, workDir, repoDir string) (*printers.JS
 	}
 
 	return &res, nil
+}
+
+func (runner *Runner) generateConfig(workDir string) (string, error) {
+	configPath := filepath.Join(workDir, "golangci-lint.json")
+	file, err := os.Create(configPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	runner.Options.LinterConfig.Run.IsVerbose = false
+	runner.Options.LinterConfig.Run.Silent = false
+	// runner.Options.LinterConfig.Run.CPUProfilePath -- use parent
+	// runner.Options.LinterConfig.Run.MemProfilePath -- use parent
+	// runner.Options.LinterConfig.Run.TracePath -- use parent
+	runner.Options.LinterConfig.Run.Concurrency = 0
+	runner.Options.LinterConfig.Run.PrintResourcesUsage = false
+	runner.Options.LinterConfig.Run.Config = configPath
+	runner.Options.LinterConfig.Run.NoConfig = false
+	runner.Options.LinterConfig.Run.Args = nil
+	// runner.Options.LinterConfig.Run.BuildTags -- use parent
+	runner.Options.LinterConfig.Run.ModulesDownloadMode = "" // use default
+	runner.Options.LinterConfig.Run.ExitCodeIfIssuesFound = 0
+	// runner.Options.LinterConfig.Run.AnalyzeTests -- use parent
+
+	runner.Options.LinterConfig.Run.Timeout = runner.Options.Timeout
+
+	runner.Options.LinterConfig.Run.PrintVersion = false
+	// runner.Options.LinterConfig.Run.SkipFiles -- use parent
+	// runner.Options.LinterConfig.Run.SkipDirs -- use parent
+	// runner.Options.LinterConfig.Run.UseDefaultSkipDirs -- use parent
+
+	runner.Options.LinterConfig.Output.Format = "json"
+	runner.Options.LinterConfig.Output.Color = "never"
+	runner.Options.LinterConfig.Output.PrintIssuedLine = true
+	runner.Options.LinterConfig.Output.PrintWelcomeMessage = false
+
+	// runner.Options.LinterConfig.LintersSettings -- use parent
+	// runner.Options.LinterConfig.Linters -- use parent
+
+	// runner.Options.LinterConfig.Issues.ExcludePatterns -- use parent
+	// runner.Options.LinterConfig.Issues.ExcludeRules -- use parent
+	// runner.Options.LinterConfig.Issues.UseDefaultExcludes -- use parent
+
+	runner.Options.LinterConfig.Issues.MaxIssuesPerLinter = 0
+	runner.Options.LinterConfig.Issues.MaxSameIssues = 0
+
+	runner.Options.LinterConfig.Issues.DiffFromRevision = ""
+	runner.Options.LinterConfig.Issues.DiffPatchFilePath = ""
+	runner.Options.LinterConfig.Issues.Diff = false
+
+	//runner.Options.LinterConfig.Issues.NeedFix -- use parent
+
+	var json = jsoniter.Config{
+		EscapeHTML:             true,
+		SortMapKeys:            true,
+		ValidateJsonRawMessage: true,
+		TagKey:                 "mapstructure",
+	}.Froze()
+
+	return configPath, json.NewEncoder(file).Encode(runner.Options.LinterConfig)
 }
 
 func hasGoCode(patchFile string) (bool, error) {

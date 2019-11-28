@@ -21,8 +21,10 @@ import (
 	"encoding/json"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/golangci/golangci-lint/pkg/report"
 	"github.com/google/go-github/github"
+	"github.com/spf13/viper"
 	"github.com/talon-one/golangci-lint-runner/internal"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -39,7 +41,7 @@ type Options struct {
 	PullRequestNumber int
 	Logger            Logger
 	Timeout           time.Duration
-	LinterOptions     LinterOptions
+	LinterConfig      config.Config
 	CacheDir          string
 	Approve           bool
 	RequestChanges    bool
@@ -170,6 +172,10 @@ func (runner *Runner) Run() error {
 
 	//todo: read linte roptions from repository, for now just copy the defaults
 
+	if err := runner.readRepoConfig(workDir); err != nil {
+		return err
+	}
+
 	patchFile := filepath.Join(workDir, "patch")
 	if err := runner.downloadPatch(patchFile); err != nil {
 		return err
@@ -238,7 +244,7 @@ func (runner *Runner) Run() error {
 	}
 
 	for i := range result.Issues {
-		if runner.Options.LinterOptions.IncludeLinterName {
+		if runner.Options.LinterConfig.Output.PrintLinterName {
 			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
 		}
 
@@ -401,6 +407,33 @@ func (Runner) getBranchMeta(branch *github.PullRequestBranch) (BranchMeta, error
 		Ref:       ref,
 		SHA:       sha,
 	}, nil
+}
+
+func (r *Runner) readRepoConfig(workDir string) error {
+	p := filepath.Join(workDir, ".golangci-lint.yml")
+	file, err := os.Open(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+	}
+	defer file.Close()
+
+	v := viper.New()
+	if err := v.ReadConfig(file); err != nil {
+		return err
+	}
+	return v.Unmarshal(&r.Options.LinterConfig)
+
+	// file, err := os.Open(filepath.Join(workDir, ".golangci-lint.yml"))
+	// if err != nil {
+	// 	if os.IsNotExist(err) {
+	// 		return nil
+	// 	}
+	// }
+	// defer file.Close()
+	//
+	// return yaml.NewDecoder(file).Decode(&r.Options.LinterConfig)
 }
 
 type appTransport struct {

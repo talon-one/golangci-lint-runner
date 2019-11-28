@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/google/go-github/github"
 	golangci_lint_runner "github.com/talon-one/golangci-lint-runner"
 	"golang.org/x/oauth2"
@@ -56,6 +57,162 @@ func main() {
 
 func options(logger logger) *golangci_lint_runner.Options {
 	var err error
+
+	config := config.Config{
+		Output: struct {
+			Format              string
+			Color               string
+			PrintIssuedLine     bool `mapstructure:"print-issued-lines"`
+			PrintLinterName     bool `mapstructure:"print-linter-name"`
+			PrintWelcomeMessage bool `mapstructure:"print-welcome"`
+		}{
+			PrintLinterName: true,
+		},
+		LintersSettings: config.LintersSettings{
+			Errcheck: config.ErrcheckSettings{
+				CheckTypeAssertions: false,
+				CheckAssignToBlank:  false,
+			},
+			Funlen: struct {
+				Lines      int
+				Statements int
+			}{
+				Lines:      60,
+				Statements: 40,
+			},
+			Lll: config.LllSettings{
+				LineLength: 120,
+				TabWidth:   1,
+			},
+			Govet: config.GovetSettings{
+				CheckShadowing: false,
+				Settings:       nil,
+				Enable: []string{
+					"asmdecl",
+					"assign",
+					"atomic",
+					"bools",
+					"buildtag",
+					"cgocall",
+					"composites",
+					"copylocks",
+					"httpresponse",
+					"loopclosure",
+					"lostcancel",
+					"nilfunc",
+					"printf",
+					"shift",
+					"stdmethods",
+					"structtag",
+					"tests",
+					"unmarshal",
+					"unreachable",
+					"unsafeptr",
+					"unusedresult"},
+
+				Disable:    []string{"unreachable"},
+				EnableAll:  false,
+				DisableAll: false,
+			},
+			Golint: struct {
+				MinConfidence float64 `mapstructure:"min-confidence"`
+			}{
+				MinConfidence: 0.8,
+			},
+			Gofmt: struct{ Simplify bool }{Simplify: true},
+			Gocyclo: struct {
+				MinComplexity int `mapstructure:"min-complexity"`
+			}{
+				MinComplexity: 20,
+			},
+			Unparam: config.UnparamSettings{
+				CheckExported: true,
+				Algo:          "cha",
+			},
+			Nakedret: config.NakedretSettings{
+				MaxFuncLines: 30,
+			},
+			Prealloc: config.PreallocSettings{
+				Simple:     true,
+				RangeLoops: true,
+				ForLoops:   false,
+			},
+			Gocritic: config.GocriticSettings{
+				EnabledChecks: []string{"assignOp",
+					"captLocal",
+					"defaultCaseOrder",
+					"elseif",
+					"ifElseChain",
+					"regexpMust",
+					"singleCaseSwitch",
+					"sloppyLen",
+					"switchTrue",
+					"typeSwitchVar",
+					"underef",
+					"unlambda",
+					"unslice",
+				},
+				SettingsPerCheck: map[string]config.GocriticCheckSettings{},
+			},
+			Godox: config.GodoxSettings{
+				Keywords: []string{"TODO", "BUG", "FIXME"},
+			},
+			Dogsled: config.DogsledSettings{
+				MaxBlankIdentifiers: 2,
+			},
+			Gocognit: config.GocognitSettings{
+				MinComplexity: 20,
+			},
+			Maligned: struct {
+				SuggestNewOrder bool `mapstructure:"suggest-new"`
+			}{
+				SuggestNewOrder: true,
+			},
+			Dupl: struct{ Threshold int }{Threshold: 100},
+			Goconst: struct {
+				MinStringLen        int `mapstructure:"min-len"`
+				MinOccurrencesCount int `mapstructure:"min-occurrences"`
+			}{
+				MinStringLen:        3,
+				MinOccurrencesCount: 3,
+			},
+			Misspell: struct {
+				Locale      string
+				IgnoreWords []string `mapstructure:"ignore-words"`
+			}{
+				Locale:      "US",
+				IgnoreWords: nil,
+			},
+			Unused: struct {
+				CheckExported bool `mapstructure:"check-exported"`
+			}{
+				CheckExported: true,
+			},
+			Whitespace: struct {
+				MultiIf   bool `mapstructure:"multi-if"`
+				MultiFunc bool `mapstructure:"multi-func"`
+			}{
+				MultiIf:   false,
+				MultiFunc: false,
+			},
+			WSL: config.WSLSettings{
+				StrictAppend:                true,
+				AllowAssignAndCallCuddle:    true,
+				AllowMultiLineAssignCuddle:  true,
+				AllowCaseTrailingWhitespace: true,
+				AllowCuddleDeclaration:      false,
+			},
+		},
+		Linters: config.Linters{
+			Enable:     []string{"deadcode", "errcheck", "gocritic", "gocyclo", "goimports", "golint", "gosimple", "govet", "ineffassign", "misspell", "nakedret", "prealloc", "staticcheck", "structcheck", "typecheck", "unconvert", "unparam", "unused", "varcheck"},
+			Disable:    nil,
+			EnableAll:  false,
+			DisableAll: true,
+			Fast:       false,
+			Presets:    nil,
+		},
+	}
+
 	options := golangci_lint_runner.Options{
 		Logger:         logger,
 		Timeout:        0,
@@ -63,10 +220,7 @@ func options(logger logger) *golangci_lint_runner.Options {
 		Approve:        *approveFlag,
 		RequestChanges: *requestChangesFlag,
 		DryRun:         *dryRunFlag,
-		LinterOptions: golangci_lint_runner.LinterOptions{
-			Linters:           []string{"deadcode", "errcheck", "gocritic", "gocyclo", "goimports", "golint", "gosimple", "govet", "ineffassign", "misspell", "nakedret", "prealloc", "staticcheck", "structcheck", "typecheck", "unconvert", "unparam", "unused", "varcheck"},
-			IncludeLinterName: true,
-		},
+		LinterConfig:   config,
 	}
 
 	if options.Timeout <= 0 {
