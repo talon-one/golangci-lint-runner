@@ -279,10 +279,15 @@ func (runner *Runner) Run() error {
 }
 
 func (runner *Runner) requestReview() error {
+	if runner.Options.RequestReview {
+		runner.Options.Logger.Debug("skipping request review")
+		return nil
+	}
 	if runner.Options.DryRun {
 		runner.Options.Logger.Info("aborting requesting review because of dry run")
 		return nil
 	}
+	runner.Options.Logger.Debug("getting authenticated user")
 	currentUser, _, err := runner.Options.Client.Users.Get(runner.Options.Context, "")
 	if err != nil {
 		return fmt.Errorf("unable to get current user: %w", err)
@@ -291,6 +296,7 @@ func (runner *Runner) requestReview() error {
 	if name != "" {
 		return fmt.Errorf("unable to get current user name")
 	}
+	runner.Options.Logger.Debug("requesting review")
 	_, _, err = runner.Options.Client.PullRequests.RequestReviewers(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.ReviewersRequest{
 		Reviewers: []string{name},
 	})
