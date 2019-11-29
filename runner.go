@@ -46,6 +46,7 @@ type Options struct {
 	Approve           bool
 	RequestChanges    bool
 	DryRun            bool
+	RequestReview     bool
 }
 
 type BranchMeta struct {
@@ -196,6 +197,12 @@ func (runner *Runner) Run() error {
 		return runner.sendReview(&reviewRequest)
 	}
 
+	// self request
+
+	if err = runner.requestReview(); err != nil {
+		return err
+	}
+
 	result, err := runner.runLinter(runner.Options.CacheDir, workDir, repoDir)
 	if err != nil {
 		return err
@@ -269,6 +276,28 @@ func (runner *Runner) Run() error {
 	}
 	runner.Options.Logger.Debug("finished with %d, took %s", runner.meta.PullRequestNumber, time.Now().Sub(startTime).String())
 	return nil
+}
+
+func (runner *Runner) requestReview() error {
+	if runner.Options.DryRun {
+		runner.Options.Logger.Info("aborting requesting review because of dry run")
+		return nil
+	}
+	currentUser, _, err := runner.Options.Client.Users.Get(runner.Options.Context, "")
+	if err != nil {
+		return fmt.Errorf("unable to get current user: %w", err)
+	}
+	name := currentUser.GetName()
+	if name != "" {
+		return fmt.Errorf("unable to get current user name")
+	}
+	_, _, err = runner.Options.Client.PullRequests.RequestReviewers(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.ReviewersRequest{
+		Reviewers: []string{name},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to request review: %w", err)
+	}
+	return err
 }
 
 func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest) error {
@@ -429,16 +458,6 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 		return err
 	}
 	return nil
-
-	// file, err := os.Open(filepath.Join(workDir, ".golangci-lint.yml"))
-	// if err != nil {
-	// 	if os.IsNotExist(err) {
-	// 		return nil
-	// 	}
-	// }
-	// defer file.Close()
-	//
-	// return yaml.NewDecoder(file).Decode(&r.Options.LinterConfig)
 }
 
 type appTransport struct {

@@ -25,6 +25,7 @@ var (
 	cacheDirFlag       = kingpin.Flag("cache-dir", "cache dir").Envar("CACHE_DIR").String()
 	approveFlag        = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
 	requestChangesFlag = kingpin.Flag("request-changes", "whether the app should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
+	requestReviewFlag  = kingpin.Flag("request-review", "if enabled assign the runner before running the linter").Envar("REQUEST_REVIEW").Default("true").Bool()
 	debugFlag          = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
 	dryRunFlag         = kingpin.Flag("dry-run", "do not actual post on the pr").Envar("DRY_RUN").Bool()
 
@@ -222,6 +223,7 @@ func options(logger logger) *golangci_lint_runner.Options {
 		RequestChanges: *requestChangesFlag,
 		DryRun:         *dryRunFlag,
 		LinterConfig:   config,
+		RequestReview:  *requestReviewFlag,
 	}
 
 	if options.Timeout <= 0 {
