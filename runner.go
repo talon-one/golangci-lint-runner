@@ -172,7 +172,7 @@ func (runner *Runner) Run() error {
 
 	//todo: read linte roptions from repository, for now just copy the defaults
 
-	if err := runner.readRepoConfig(workDir); err != nil {
+	if err := runner.readRepoConfig(repoDir); err != nil {
 		return err
 	}
 
@@ -409,8 +409,8 @@ func (Runner) getBranchMeta(branch *github.PullRequestBranch) (BranchMeta, error
 	}, nil
 }
 
-func (r *Runner) readRepoConfig(workDir string) error {
-	p := filepath.Join(workDir, ".golangci.yml")
+func (r *Runner) readRepoConfig(repoDir string) error {
+	p := filepath.Join(repoDir, ".golangci.yml")
 	file, err := os.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -423,7 +423,13 @@ func (r *Runner) readRepoConfig(workDir string) error {
 	if err := v.ReadConfig(file); err != nil {
 		return err
 	}
-	return v.Unmarshal(&r.Options.LinterConfig)
+
+	var cfg config.Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return err
+	}
+	r.Options.LinterConfig = cfg
+	return nil
 
 	// file, err := os.Open(filepath.Join(workDir, ".golangci-lint.yml"))
 	// if err != nil {
