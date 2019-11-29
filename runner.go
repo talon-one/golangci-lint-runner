@@ -420,15 +420,14 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 	defer file.Close()
 
 	v := viper.New()
+	v.SetConfigType("yaml")
 	if err := v.ReadConfig(file); err != nil {
 		return err
 	}
 
-	var cfg config.Config
-	if err := v.Unmarshal(&cfg); err != nil {
+	if err := v.Unmarshal(&r.Options.LinterConfig); err != nil {
 		return err
 	}
-	r.Options.LinterConfig = cfg
 	return nil
 
 	// file, err := os.Open(filepath.Join(workDir, ".golangci-lint.yml"))
