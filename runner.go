@@ -279,7 +279,7 @@ func (runner *Runner) Run() error {
 }
 
 func (runner *Runner) requestReview() error {
-	if runner.Options.RequestReview {
+	if !runner.Options.RequestReview {
 		runner.Options.Logger.Debug("skipping request review")
 		return nil
 	}
