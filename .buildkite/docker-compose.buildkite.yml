@@ -1,0 +1,16 @@
+
+version: '3'
+
+services:
+  golangci-linter:
+    image: eu.gcr.io/talon-farm2/talon-one/golangci-lint-runner/master:03a725cfad323d81aacba962dcc1b850dac75144
+    command: "standalone"
+    environment:
+      - APPROVE=true
+      - REQUEST_CHANGES=true
+      - NO_CHANGES_TEXT=
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_PULL_REQUEST_NUMBER=${BUILDKITE_BUILD_NUMBER}
+      - GITHUB_OWNER_NAME=talon-one
+      - GITHUB_REPO_NAME=golangci-lint-runner
+      - REQUEST_REVIEW=true
