@@ -46,7 +46,6 @@ type Options struct {
 	Approve           bool
 	RequestChanges    bool
 	DryRun            bool
-	RequestReview     bool
 	// NoChangesText sends the text when no go code changes are present
 	NoChangesText string
 }
@@ -211,12 +210,6 @@ func (runner *Runner) Run() error {
 		return runner.sendReview(&reviewRequest)
 	}
 
-	// self request
-
-	if err = runner.requestReview(); err != nil {
-		return err
-	}
-
 	result, err := runner.runLinter(runner.Options.CacheDir, workDir, repoDir)
 	if err != nil {
 		return err
@@ -294,34 +287,6 @@ func (runner *Runner) Run() error {
 	}
 	runner.Options.Logger.Debug("finished with %d, took %s", runner.meta.PullRequestNumber, time.Now().Sub(startTime).String())
 	return nil
-}
-
-func (runner *Runner) requestReview() error {
-	if !runner.Options.RequestReview {
-		runner.Options.Logger.Debug("skipping request review")
-		return nil
-	}
-	if runner.Options.DryRun {
-		runner.Options.Logger.Info("aborting requesting review because of dry run")
-		return nil
-	}
-	runner.Options.Logger.Debug("getting authenticated user")
-	currentUser, _, err := runner.Options.Client.Users.Get(runner.Options.Context, "")
-	if err != nil {
-		return fmt.Errorf("unable to get current user: %w", err)
-	}
-	name := currentUser.GetName()
-	if name != "" {
-		return fmt.Errorf("unable to get current user name")
-	}
-	runner.Options.Logger.Debug("requesting review")
-	_, _, err = runner.Options.Client.PullRequests.RequestReviewers(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.ReviewersRequest{
-		Reviewers: []string{name},
-	})
-	if err != nil {
-		return fmt.Errorf("unable to request review: %w", err)
-	}
-	return err
 }
 
 func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest) error {

@@ -42,7 +42,6 @@ var (
 	pullRequestNumberFlag = standAloneCmd.Flag("pull-request-number", "github pull request number").Envar("GITHUB_PULL_REQUEST_NUMBER").Required().Int()
 	repoNameFlag          = standAloneCmd.Flag("repo-name", "github repository name").Envar("GITHUB_REPO_NAME").Required().String()
 	repoOwnerFlag         = standAloneCmd.Flag("repo-owner", "github repository owner").Envar("GITHUB_REPO_OWNER").Required().String()
-	requestReviewFlag     = standAloneCmd.Flag("request-review", "if enabled assign the runner before running the linter").Envar("REQUEST_REVIEW").Default("true").Bool()
 )
 var version string
 var commit string
@@ -228,7 +227,6 @@ func options(logger logger) *golangci_lint_runner.Options {
 		RequestChanges: *requestChangesFlag,
 		DryRun:         *dryRunFlag,
 		LinterConfig:   config,
-		RequestReview:  *requestReviewFlag,
 		NoChangesText:  *noChangesTextFlag,
 	}
 
