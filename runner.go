@@ -304,7 +304,7 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 
 	_, _, err = runner.Options.Client.PullRequests.CreateReview(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, reviewRequest)
 	if err != nil {
-		return fmt.Errorf("unable to create review: %w", err)
+		return fmt.Errorf("unable to create review %s: %w", string(buf), err)
 	}
 	return nil
 }
