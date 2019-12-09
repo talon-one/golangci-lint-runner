@@ -7,7 +7,7 @@ steps:
         config: docker-compose.yml
         run: golangci-lint-runner
         env:
-          - APPROVE=false
+          - APPROVE=true
           - REQUEST_CHANGES=false
           - NO_CHANGES_TEXT=""
           - GITHUB_TOKEN=$GITHUB_TOKEN
