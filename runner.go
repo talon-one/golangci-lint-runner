@@ -302,7 +302,7 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 		return nil
 	}
 
-	if *reviewRequest.Body == "" {
+	if reviewRequest.Body != nil && *reviewRequest.Body == "" {
 		reviewRequest.Body = nil
 	}
 
