@@ -7,14 +7,14 @@ steps:
         config: docker-compose.yml
         run: golangci-lint-runner
         env:
-          - APPROVE: true
-          - REQUEST_CHANGES: true
-          - NO_CHANGES_TEXT: ""
-          - GITHUB_TOKEN: $GITHUB_TOKEN
-          - GITHUB_PULL_REQUEST_NUMBER: $BUILDKITE_PULL_REQUEST
-          - GITHUB_REPO_OWNER: talon-one
-          - GITHUB_REPO_NAME: golangci-lint-runner
-          - REQUEST_REVIEW: true
+          - APPROVE=true
+          - REQUEST_CHANGES=true
+          - NO_CHANGES_TEXT=""
+          - GITHUB_TOKEN=$GITHUB_TOKEN
+          - GITHUB_PULL_REQUEST_NUMBER=$BUILDKITE_PULL_REQUEST
+          - GITHUB_REPO_OWNER=talon-one
+          - GITHUB_REPO_NAME=golangci-lint-runner
+          - REQUEST_REVIEW=true
 
   - label: ":building_construction: :docker: Build Container"
     concurrency: 1
