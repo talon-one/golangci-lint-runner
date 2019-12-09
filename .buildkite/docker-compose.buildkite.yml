@@ -13,6 +13,6 @@ services:
       - NO_CHANGES_TEXT=
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_PULL_REQUEST_NUMBER=${BUILDKITE_BUILD_NUMBER}
-      - GITHUB_OWNER_NAME=talon-one
+      - GITHUB_REPO_OWNER=talon-one
       - GITHUB_REPO_NAME=golangci-lint-runner
       - REQUEST_REVIEW=true
