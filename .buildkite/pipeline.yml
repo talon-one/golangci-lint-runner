@@ -1,10 +1,20 @@
 steps:
   - label: ":golang: Golang linter"
     if: build.pull_request.id != null
+    command: golangci-lint-runner standalone
     plugins:
       docker-compose#v3.0.3:
-        config: .buildkite/docker-compose.buildkite.yml
+        config: docker-compose.yml
         run: golangci-linter
+        env:
+          - APPROVE: true
+          - REQUEST_CHANGES: true
+          - NO_CHANGES_TEXT: ""
+          - GITHUB_TOKEN: $GITHUB_TOKEN
+          - GITHUB_PULL_REQUEST_NUMBER: $BUILDKITE_PULL_REQUEST
+          - GITHUB_REPO_OWNER: talon-one
+          - GITHUB_REPO_NAME: golangci-lint-runner
+          - REQUEST_REVIEW: true
 
   - label: ":building_construction: :docker: Build Container"
     concurrency: 1
