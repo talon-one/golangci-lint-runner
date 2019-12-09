@@ -232,10 +232,8 @@ func (runner *Runner) Run() error {
 
 	if len(result.Issues) > 0 {
 		reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
-	} else {
-		if runner.Options.NoIssuesText != "" {
-			reviewRequest.Body = github.String(runner.Options.NoIssuesText)
-		}
+	} else if runner.Options.NoIssuesText != "" {
+		reviewRequest.Body = github.String(runner.Options.NoIssuesText)
 	}
 
 	if len(warnings) > 0 {
