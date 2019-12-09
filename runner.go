@@ -78,6 +78,7 @@ const (
 	githubEventApprove        = "APPROVE"
 	githubEventRequestChanges = "REQUEST_CHANGES"
 	githubEventComment        = "COMMENT"
+	githubEventPending        = "PENDING"
 )
 
 func NewRunner(options Options) (*Runner, error) {
@@ -179,8 +180,6 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	//todo: read linte roptions from repository, for now just copy the defaults
-
 	if err := runner.readRepoConfig(repoDir); err != nil {
 		return err
 	}
@@ -207,6 +206,14 @@ func (runner *Runner) Run() error {
 			reviewRequest.Event = github.String(githubEventComment)
 		}
 		return runner.sendReview(&reviewRequest)
+	}
+
+	err = runner.sendReview(&github.PullRequestReviewRequest{
+		CommitID: github.String(runner.meta.Head.SHA),
+		Event:    github.String(githubEventPending),
+	})
+	if err != nil {
+		return err
 	}
 
 	result, err := runner.runLinter(runner.Options.CacheDir, workDir, repoDir)
