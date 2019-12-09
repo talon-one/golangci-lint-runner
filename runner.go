@@ -245,6 +245,7 @@ func (runner *Runner) Run() error {
 			fmt.Fprintf(&sb, "%s: %s\n", w.Tag, strings.TrimSpace(w.Text))
 		}
 		sb.WriteString("</code>")
+		reviewRequest.Body = github.String(sb.String())
 	}
 
 	if len(result.Issues) <= 0 && len(warnings) <= 0 {
