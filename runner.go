@@ -47,6 +47,8 @@ type Options struct {
 	RequestChanges    bool
 	DryRun            bool
 	RequestReview     bool
+	// NoChangesText sends the text when no go code changes are present
+	NoChangesText string
 }
 
 type BranchMeta struct {
@@ -192,8 +194,20 @@ func (runner *Runner) Run() error {
 	}
 	if !goCode {
 		runner.Options.Logger.Debug("no go code present")
-		reviewRequest.Body = github.String("No go code in changes")
-		reviewRequest.Event = github.String("COMMENT")
+
+		// dont send a review if we have no changes text and we are not allowed to approve
+		if runner.Options.NoChangesText == "" && !runner.Options.Approve {
+			return nil
+		}
+
+		if runner.Options.NoChangesText != "" {
+			reviewRequest.Body = github.String(runner.Options.NoChangesText)
+		}
+		if runner.Options.Approve {
+			reviewRequest.Event = github.String("APPROVE")
+		} else {
+			reviewRequest.Event = github.String("COMMENT")
+		}
 		return runner.sendReview(&reviewRequest)
 	}
 
@@ -222,11 +236,15 @@ func (runner *Runner) Run() error {
 
 	runner.Options.Logger.Info("golangci-lint reported %d issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
 
-	reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
+	if len(result.Issues) > 0 {
+		reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
+	}
 
 	if len(warnings) > 0 {
 		var sb strings.Builder
-		sb.WriteString(*reviewRequest.Body)
+		if reviewRequest.Body != nil {
+			sb.WriteString(*reviewRequest.Body)
+		}
 		sb.WriteRune(',')
 		fmt.Fprintf(&sb, " but got %d warnings:", len(warnings))
 		sb.WriteString("<code>")
@@ -445,7 +463,7 @@ func (Runner) getBranchMeta(branch *github.PullRequestBranch) (BranchMeta, error
 }
 
 func (r *Runner) readRepoConfig(repoDir string) error {
-	p := filepath.Join(repoDir, ".golangci.yml")
+	p := filepath.Join(repoDir, r.Options.LinterConfig.Run.Config)
 	file, err := os.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {

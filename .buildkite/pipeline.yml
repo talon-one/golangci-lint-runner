@@ -1,4 +1,10 @@
 steps:
+  - label: "Golang linter"
+    plugins:
+      docker-compose#v3.0.3:
+        config: docker-compose.buildkite.yml
+        run: golangci-linter
+
   - label: ":building_construction: :docker: Build Container"
     concurrency: 1
     concurrency_group: "golangci-lint-runner/push-container"
