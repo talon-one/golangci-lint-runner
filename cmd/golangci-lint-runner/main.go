@@ -277,8 +277,6 @@ func server() {
 		os.Exit(1)
 	}
 
-	options.RequestReview = false
-
 	srv, err := golangci_lint_runner.NewServer(&options)
 	if err != nil {
 		logger.Error(err.Error())
