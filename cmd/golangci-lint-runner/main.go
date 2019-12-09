@@ -24,7 +24,9 @@ import (
 var (
 	cacheDirFlag       = kingpin.Flag("cache-dir", "cache dir").Envar("CACHE_DIR").String()
 	approveFlag        = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
-	requestChangesFlag = kingpin.Flag("request-changes", "whether the app should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
+	requestChangesFlag = kingpin.Flag("request-changes", "whether the bot should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
+	noChangesTextFlag  = kingpin.Flag("no-changes-text", "the text the bot should send if there are no go code changes").Envar("NO_CHANGES_TEXT").Default("No go code in changes").String()
+	configFileFlag     = kingpin.Flag("config", "which config file to use").Envar("CONFIG_FILE").Default(".golangci.yml").Required().String()
 	debugFlag          = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
 	dryRunFlag         = kingpin.Flag("dry-run", "do not actual post on the pr").Envar("DRY_RUN").Bool()
 
@@ -60,6 +62,9 @@ func options(logger logger) *golangci_lint_runner.Options {
 	var err error
 
 	config := config.Config{
+		Run: config.Run{
+			Config: *configFileFlag,
+		},
 		Output: struct {
 			Format              string
 			Color               string
@@ -224,6 +229,7 @@ func options(logger logger) *golangci_lint_runner.Options {
 		DryRun:         *dryRunFlag,
 		LinterConfig:   config,
 		RequestReview:  *requestReviewFlag,
+		NoChangesText:  *noChangesTextFlag,
 	}
 
 	if options.Timeout <= 0 {
