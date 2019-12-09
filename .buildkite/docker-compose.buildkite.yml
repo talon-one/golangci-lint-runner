@@ -3,7 +3,7 @@ version: '3'
 
 services:
   golangci-linter:
-    image: eu.gcr.io/talon-farm2/talon-one/golangci-lint-runner/master:ccea32e315cfb904f4afbc2f63e966534ed76655
+    image: eu.gcr.io/talon-farm2/talon-one/golangci-lint-runner/master:03a725cfad323d81aacba962dcc1b850dac75144
     command: ["golangci-lint-runner", "standalone"]
     env_file:
       - ../.env.clean

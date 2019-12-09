@@ -1,5 +1,5 @@
 steps:
-  - label: "Golang linter"
+  - label: ":golang: Golang linter"
     if: build.pull_request.id != null
     plugins:
       docker-compose#v3.0.3:
