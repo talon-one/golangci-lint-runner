@@ -74,6 +74,12 @@ type Runner struct {
 	Options *Options
 }
 
+const (
+	githubEventApprove        = "APPROVE"
+	githubEventRequestChanges = "REQUEST_CHANGES"
+	githubEventComment        = "COMMENT"
+)
+
 func NewRunner(options Options) (*Runner, error) {
 	if options.Client == nil {
 		return nil, errors.New("Client must be specified")
@@ -194,19 +200,11 @@ func (runner *Runner) Run() error {
 	}
 	if !goCode {
 		runner.Options.Logger.Debug("no go code present")
-
-		// dont send a review if we have no changes text and we are not allowed to approve
-		if runner.Options.NoChangesText == "" && !runner.Options.Approve {
-			return nil
-		}
-
-		if runner.Options.NoChangesText != "" {
-			reviewRequest.Body = github.String(runner.Options.NoChangesText)
-		}
+		reviewRequest.Body = github.String(runner.Options.NoChangesText)
 		if runner.Options.Approve {
-			reviewRequest.Event = github.String("APPROVE")
+			reviewRequest.Event = github.String(githubEventApprove)
 		} else {
-			reviewRequest.Event = github.String("COMMENT")
+			reviewRequest.Event = github.String(githubEventComment)
 		}
 		return runner.sendReview(&reviewRequest)
 	}
@@ -232,15 +230,13 @@ func (runner *Runner) Run() error {
 
 	if len(result.Issues) > 0 {
 		reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
-	} else if runner.Options.NoIssuesText != "" {
+	} else {
 		reviewRequest.Body = github.String(runner.Options.NoIssuesText)
 	}
 
 	if len(warnings) > 0 {
 		var sb strings.Builder
-		if reviewRequest.Body != nil {
-			sb.WriteString(*reviewRequest.Body)
-		}
+		sb.WriteString(*reviewRequest.Body)
 		sb.WriteRune(',')
 		fmt.Fprintf(&sb, " but got %d warnings:", len(warnings))
 		sb.WriteString("<code>")
@@ -253,15 +249,15 @@ func (runner *Runner) Run() error {
 
 	if len(result.Issues) <= 0 && len(warnings) <= 0 {
 		if runner.Options.Approve {
-			reviewRequest.Event = github.String("APPROVE")
+			reviewRequest.Event = github.String(githubEventApprove)
 		} else {
-			reviewRequest.Event = github.String("COMMENT")
+			reviewRequest.Event = github.String(githubEventComment)
 		}
 	} else {
 		if runner.Options.RequestChanges {
-			reviewRequest.Event = github.String("REQUEST_CHANGES")
+			reviewRequest.Event = github.String(githubEventRequestChanges)
 		} else {
-			reviewRequest.Event = github.String("COMMENT")
+			reviewRequest.Event = github.String(githubEventComment)
 		}
 	}
 
@@ -294,6 +290,15 @@ func (runner *Runner) Run() error {
 }
 
 func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest) error {
+	// do not send conditions
+	if *reviewRequest.Event == githubEventRequestChanges || *reviewRequest.Event == githubEventComment && (reviewRequest.Body == nil || *reviewRequest.Body == "") {
+		return nil
+	}
+
+	if *reviewRequest.Body == "" {
+		reviewRequest.Body = nil
+	}
+
 	buf, err := json.Marshal(reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to marshal review: %w", err)
