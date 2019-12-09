@@ -48,6 +48,7 @@ type Options struct {
 	DryRun            bool
 	// NoChangesText sends the text when no go code changes are present
 	NoChangesText string
+	NoIssuesText  string
 }
 
 type BranchMeta struct {
@@ -231,6 +232,10 @@ func (runner *Runner) Run() error {
 
 	if len(result.Issues) > 0 {
 		reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
+	} else {
+		if runner.Options.NoIssuesText != "" {
+			reviewRequest.Body = github.String(runner.Options.NoIssuesText)
+		}
 	}
 
 	if len(warnings) > 0 {

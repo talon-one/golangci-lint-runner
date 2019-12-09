@@ -26,6 +26,7 @@ var (
 	approveFlag        = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
 	requestChangesFlag = kingpin.Flag("request-changes", "whether the bot should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
 	noChangesTextFlag  = kingpin.Flag("no-changes-text", "the text the bot should send if there are no go code changes").Envar("NO_CHANGES_TEXT").Default("No go code in changes").String()
+	noIssuesTextFlag   = kingpin.Flag("no-issues-text", "the text the bot should send if there are no issues").Envar("NO_ISSUES_TEXT").Default("").String()
 	configFileFlag     = kingpin.Flag("config", "which config file to use").Envar("CONFIG_FILE").Default(".golangci.yml").String()
 	debugFlag          = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
 	dryRunFlag         = kingpin.Flag("dry-run", "do not actual post on the pr").Envar("DRY_RUN").Bool()
@@ -228,6 +229,7 @@ func options(logger logger) *golangci_lint_runner.Options {
 		DryRun:         *dryRunFlag,
 		LinterConfig:   config,
 		NoChangesText:  *noChangesTextFlag,
+		NoIssuesText:   *noIssuesTextFlag,
 	}
 
 	if options.Timeout <= 0 {
