@@ -4,6 +4,7 @@ steps:
       docker-compose#v3.0.3:
         config: .buildkite/docker-compose.buildkite.yml
         run: golangci-linter
+        workdir: /go/src/github.com/talon-one/golangci-lint-runner
 
   - label: ":building_construction: :docker: Build Container"
     concurrency: 1
