@@ -290,6 +290,7 @@ func (runner *Runner) Run() error {
 func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest) error {
 	// do not send conditions
 	if *reviewRequest.Event == githubEventRequestChanges || *reviewRequest.Event == githubEventComment && (reviewRequest.Body == nil || *reviewRequest.Body == "") {
+		runner.Options.Logger.Debug("not sending review because body is empty and event is either REQUEST_CHANGES or COMMENT")
 		return nil
 	}
 
@@ -440,6 +441,7 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 	file, err := os.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {
+			r.Options.Logger.Debug("no config file present")
 			return nil
 		}
 	}
@@ -454,6 +456,11 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 	if err := v.Unmarshal(&r.Options.LinterConfig); err != nil {
 		return err
 	}
+	buf, err := json.Marshal(r.Options.LinterConfig)
+	if err != nil {
+		return err
+	}
+	r.Options.Logger.Debug("successfully read config %s: %s", p, string(buf))
 	return nil
 }
 
