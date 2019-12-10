@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# generate a clean .env file (to be read by docker-compose)
-while IFS== read -r key val ; do
-    val=${val%\"}; val=${val#\"}; key=${key#export };
-    echo "$key=$val" >> .env.clean
-done < ${BUILDKITE_ENV_FILE}
-
-printf "Date of pipeline step is \x1b[36m%s\x1b[m\n" "$(date)"

@@ -26,7 +26,8 @@ var (
 	approveFlag        = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
 	requestChangesFlag = kingpin.Flag("request-changes", "whether the bot should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
 	noChangesTextFlag  = kingpin.Flag("no-changes-text", "the text the bot should send if there are no go code changes").Envar("NO_CHANGES_TEXT").Default("No go code in changes").String()
-	configFileFlag     = kingpin.Flag("config", "which config file to use").Envar("CONFIG_FILE").Default(".golangci.yml").Required().String()
+	noIssuesTextFlag   = kingpin.Flag("no-issues-text", "the text the bot should send if there are no issues").Envar("NO_ISSUES_TEXT").Default("").String()
+	configFileFlag     = kingpin.Flag("config", "which config file to use").Envar("CONFIG_FILE").Default(".golangci.yml").String()
 	debugFlag          = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
 	dryRunFlag         = kingpin.Flag("dry-run", "do not actual post on the pr").Envar("DRY_RUN").Bool()
 
@@ -42,7 +43,6 @@ var (
 	pullRequestNumberFlag = standAloneCmd.Flag("pull-request-number", "github pull request number").Envar("GITHUB_PULL_REQUEST_NUMBER").Required().Int()
 	repoNameFlag          = standAloneCmd.Flag("repo-name", "github repository name").Envar("GITHUB_REPO_NAME").Required().String()
 	repoOwnerFlag         = standAloneCmd.Flag("repo-owner", "github repository owner").Envar("GITHUB_REPO_OWNER").Required().String()
-	requestReviewFlag     = standAloneCmd.Flag("request-review", "if enabled assign the runner before running the linter").Envar("REQUEST_REVIEW").Default("true").Bool()
 )
 var version string
 var commit string
@@ -228,8 +228,8 @@ func options(logger logger) *golangci_lint_runner.Options {
 		RequestChanges: *requestChangesFlag,
 		DryRun:         *dryRunFlag,
 		LinterConfig:   config,
-		RequestReview:  *requestReviewFlag,
 		NoChangesText:  *noChangesTextFlag,
+		NoIssuesText:   *noIssuesTextFlag,
 	}
 
 	if options.Timeout <= 0 {
@@ -278,8 +278,6 @@ func server() {
 		logger.Error("could not use a queue <= 0")
 		os.Exit(1)
 	}
-
-	options.RequestReview = false
 
 	srv, err := golangci_lint_runner.NewServer(&options)
 	if err != nil {

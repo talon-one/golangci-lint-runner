@@ -46,9 +46,9 @@ type Options struct {
 	Approve           bool
 	RequestChanges    bool
 	DryRun            bool
-	RequestReview     bool
 	// NoChangesText sends the text when no go code changes are present
 	NoChangesText string
+	NoIssuesText  string
 }
 
 type BranchMeta struct {
@@ -73,6 +73,12 @@ type Runner struct {
 	meta    MetaData
 	Options *Options
 }
+
+const (
+	githubEventApprove        = "APPROVE"
+	githubEventRequestChanges = "REQUEST_CHANGES"
+	githubEventComment        = "COMMENT"
+)
 
 func NewRunner(options Options) (*Runner, error) {
 	if options.Client == nil {
@@ -173,8 +179,6 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	//todo: read linte roptions from repository, for now just copy the defaults
-
 	if err := runner.readRepoConfig(repoDir); err != nil {
 		return err
 	}
@@ -194,27 +198,13 @@ func (runner *Runner) Run() error {
 	}
 	if !goCode {
 		runner.Options.Logger.Debug("no go code present")
-
-		// dont send a review if we have no changes text and we are not allowed to approve
-		if runner.Options.NoChangesText == "" && !runner.Options.Approve {
-			return nil
-		}
-
-		if runner.Options.NoChangesText != "" {
-			reviewRequest.Body = github.String(runner.Options.NoChangesText)
-		}
+		reviewRequest.Body = github.String(runner.Options.NoChangesText)
 		if runner.Options.Approve {
-			reviewRequest.Event = github.String("APPROVE")
+			reviewRequest.Event = github.String(githubEventApprove)
 		} else {
-			reviewRequest.Event = github.String("COMMENT")
+			reviewRequest.Event = github.String(githubEventComment)
 		}
 		return runner.sendReview(&reviewRequest)
-	}
-
-	// self request
-
-	if err = runner.requestReview(); err != nil {
-		return err
 	}
 
 	result, err := runner.runLinter(runner.Options.CacheDir, workDir, repoDir)
@@ -238,13 +228,13 @@ func (runner *Runner) Run() error {
 
 	if len(result.Issues) > 0 {
 		reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
+	} else {
+		reviewRequest.Body = github.String(runner.Options.NoIssuesText)
 	}
 
 	if len(warnings) > 0 {
 		var sb strings.Builder
-		if reviewRequest.Body != nil {
-			sb.WriteString(*reviewRequest.Body)
-		}
+		sb.WriteString(*reviewRequest.Body)
 		sb.WriteRune(',')
 		fmt.Fprintf(&sb, " but got %d warnings:", len(warnings))
 		sb.WriteString("<code>")
@@ -252,19 +242,20 @@ func (runner *Runner) Run() error {
 			fmt.Fprintf(&sb, "%s: %s\n", w.Tag, strings.TrimSpace(w.Text))
 		}
 		sb.WriteString("</code>")
+		reviewRequest.Body = github.String(sb.String())
 	}
 
 	if len(result.Issues) <= 0 && len(warnings) <= 0 {
 		if runner.Options.Approve {
-			reviewRequest.Event = github.String("APPROVE")
+			reviewRequest.Event = github.String(githubEventApprove)
 		} else {
-			reviewRequest.Event = github.String("COMMENT")
+			reviewRequest.Event = github.String(githubEventComment)
 		}
 	} else {
 		if runner.Options.RequestChanges {
-			reviewRequest.Event = github.String("REQUEST_CHANGES")
+			reviewRequest.Event = github.String(githubEventRequestChanges)
 		} else {
-			reviewRequest.Event = github.String("COMMENT")
+			reviewRequest.Event = github.String(githubEventComment)
 		}
 	}
 
@@ -296,35 +287,16 @@ func (runner *Runner) Run() error {
 	return nil
 }
 
-func (runner *Runner) requestReview() error {
-	if !runner.Options.RequestReview {
-		runner.Options.Logger.Debug("skipping request review")
-		return nil
-	}
-	if runner.Options.DryRun {
-		runner.Options.Logger.Info("aborting requesting review because of dry run")
-		return nil
-	}
-	runner.Options.Logger.Debug("getting authenticated user")
-	currentUser, _, err := runner.Options.Client.Users.Get(runner.Options.Context, "")
-	if err != nil {
-		return fmt.Errorf("unable to get current user: %w", err)
-	}
-	name := currentUser.GetName()
-	if name != "" {
-		return fmt.Errorf("unable to get current user name")
-	}
-	runner.Options.Logger.Debug("requesting review")
-	_, _, err = runner.Options.Client.PullRequests.RequestReviewers(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, github.ReviewersRequest{
-		Reviewers: []string{name},
-	})
-	if err != nil {
-		return fmt.Errorf("unable to request review: %w", err)
-	}
-	return err
-}
-
 func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest) error {
+	// do not send conditions
+	if *reviewRequest.Event == githubEventRequestChanges || *reviewRequest.Event == githubEventComment && (reviewRequest.Body == nil || *reviewRequest.Body == "") {
+		return nil
+	}
+
+	if reviewRequest.Body != nil && *reviewRequest.Body == "" {
+		reviewRequest.Body = nil
+	}
+
 	buf, err := json.Marshal(reviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to marshal review: %w", err)
@@ -338,7 +310,7 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 
 	_, _, err = runner.Options.Client.PullRequests.CreateReview(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, reviewRequest)
 	if err != nil {
-		return fmt.Errorf("unable to create review: %w", err)
+		return fmt.Errorf("unable to create review %s: %w", string(buf), err)
 	}
 	return nil
 }
