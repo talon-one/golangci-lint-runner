@@ -207,6 +207,14 @@ func (runner *Runner) Run() error {
 		return runner.sendReview(&reviewRequest)
 	}
 
+	err = runner.sendReview(&github.PullRequestReviewRequest{
+		CommitID: github.String(runner.meta.Head.SHA),
+		Event:    github.String("PENDING"),
+	})
+	if err != nil {
+		return err
+	}
+
 	result, err := runner.runLinter(runner.Options.CacheDir, workDir, repoDir)
 	if err != nil {
 		return err
