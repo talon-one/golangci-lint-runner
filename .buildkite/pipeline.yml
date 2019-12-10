@@ -18,6 +18,7 @@ steps:
   - label: ":building_construction: :docker: Build Container"
     concurrency: 1
     concurrency_group: "golangci-lint-runner/push-container"
+    key: building
     plugins:
       docker-compose#v3.0.3:
         config: docker-compose.yml
@@ -25,11 +26,11 @@ steps:
         image-name: ${BUILDKITE_COMMIT}
         image-repository: eu.gcr.io/talon-farm2/talon-one/golangci-lint-runner/${BUILDKITE_BRANCH}
 
-  - wait
-
   - label: ":arrow_up: :docker: Pushing Container"
     concurrency: 1
     concurrency_group: "golangci-lint-runner/push-container"
+    depends_on:
+      - building
     plugins:
       docker-compose#v3.0.3:
         config: docker-compose.yml
