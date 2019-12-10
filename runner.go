@@ -436,6 +436,7 @@ func (Runner) getBranchMeta(branch *github.PullRequestBranch) (BranchMeta, error
 
 func (r *Runner) readRepoConfig(repoDir string) error {
 	p := filepath.Join(repoDir, r.Options.LinterConfig.Run.Config)
+	r.Options.Logger.Debug("trying to read linter config file %s", p)
 	file, err := os.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {
