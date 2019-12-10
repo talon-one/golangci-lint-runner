@@ -20,10 +20,13 @@ import (
 
 	"encoding/json"
 
+	"bytes"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/golangci/golangci-lint/pkg/report"
 	"github.com/google/go-github/github"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"github.com/talon-one/golangci-lint-runner/internal"
 	"gopkg.in/src-d/go-git.v4"
@@ -449,6 +452,31 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 
 	v := viper.New()
 	v.SetConfigType("yaml")
+
+	var json = jsoniter.Config{
+		EscapeHTML:             true,
+		SortMapKeys:            true,
+		ValidateJsonRawMessage: true,
+		TagKey:                 "mapstructure",
+	}.Froze()
+
+	var defaultConfig bytes.Buffer
+	if err := json.NewEncoder(&defaultConfig).Encode(r.Options.LinterConfig); err != nil {
+		return err
+	}
+	if err := v.ReadConfig(&defaultConfig); err != nil {
+		return err
+	}
+
+	if err := v.ReadConfig(file); err != nil {
+		return err
+	}
+
+	r.Options.LinterConfig = config.Config{}
+	if err := v.Unmarshal(&r.Options.LinterConfig); err != nil {
+		return err
+	}
+
 	if err := v.ReadConfig(file); err != nil {
 		return err
 	}
