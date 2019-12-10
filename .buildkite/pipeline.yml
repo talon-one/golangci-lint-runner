@@ -9,7 +9,6 @@ steps:
         env:
           - APPROVE=true
           - REQUEST_CHANGES=false
-          - NO_CHANGES_TEXT=
           - GITHUB_TOKEN=$GITHUB_TOKEN
           - GITHUB_PULL_REQUEST_NUMBER=$BUILDKITE_PULL_REQUEST
           - GITHUB_REPO_OWNER=talon-one
