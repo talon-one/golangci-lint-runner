@@ -20,14 +20,12 @@ import (
 
 	"encoding/json"
 
-	"bytes"
-
 	"github.com/dgrijalva/jwt-go"
 	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/golangci/golangci-lint/pkg/report"
 	"github.com/google/go-github/github"
+	"github.com/imdario/mergo"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/spf13/viper"
 	"github.com/talon-one/golangci-lint-runner/internal"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -450,9 +448,6 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 	}
 	defer file.Close()
 
-	v := viper.New()
-	v.SetConfigType("yaml")
-
 	var json = jsoniter.Config{
 		EscapeHTML:             true,
 		SortMapKeys:            true,
@@ -460,34 +455,20 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 		TagKey:                 "mapstructure",
 	}.Froze()
 
-	var defaultConfig bytes.Buffer
-	if err := json.NewEncoder(&defaultConfig).Encode(r.Options.LinterConfig); err != nil {
-		return err
-	}
-	if err := v.ReadConfig(&defaultConfig); err != nil {
+	var cfg config.Config
+	if err = json.NewDecoder(file).Decode(&cfg); err != nil {
 		return err
 	}
 
-	if err := v.ReadConfig(file); err != nil {
-		return err
+	if err = mergo.Merge(&r.Options.LinterConfig, cfg, mergo.WithOverride); err != nil {
+		return nil
 	}
 
-	r.Options.LinterConfig = config.Config{}
-	if err := v.Unmarshal(&r.Options.LinterConfig); err != nil {
-		return err
-	}
-
-	if err := v.ReadConfig(file); err != nil {
-		return err
-	}
-
-	if err := v.Unmarshal(&r.Options.LinterConfig); err != nil {
-		return err
-	}
 	buf, err := json.Marshal(r.Options.LinterConfig)
 	if err != nil {
 		return err
 	}
+
 	r.Options.Logger.Debug("successfully read config %s: %s", p, string(buf))
 	return nil
 }
