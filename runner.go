@@ -25,7 +25,7 @@ import (
 	"github.com/golangci/golangci-lint/pkg/report"
 	"github.com/google/go-github/github"
 	"github.com/imdario/mergo"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/spf13/viper"
 	"github.com/talon-one/golangci-lint-runner/internal"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -448,15 +448,14 @@ func (r *Runner) readRepoConfig(repoDir string) error {
 	}
 	defer file.Close()
 
-	var json = jsoniter.Config{
-		EscapeHTML:             true,
-		SortMapKeys:            true,
-		ValidateJsonRawMessage: true,
-		TagKey:                 "mapstructure",
-	}.Froze()
-
 	var cfg config.Config
-	if err = json.NewDecoder(file).Decode(&cfg); err != nil {
+
+	v := viper.New()
+	v.SetConfigType("yaml")
+	if err := v.ReadConfig(file); err != nil {
+		return err
+	}
+	if err := v.Unmarshal(&cfg); err != nil {
 		return err
 	}
 
