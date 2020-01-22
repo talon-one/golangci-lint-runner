@@ -48,8 +48,9 @@ type Options struct {
 	RequestChanges    bool
 	DryRun            bool
 	// NoChangesText sends the text when no go code changes are present
-	NoChangesText string
-	NoIssuesText  string
+	NoChangesText   string
+	NoIssuesText    string
+	NoNewIssuesText string
 }
 
 type BranchMeta struct {
@@ -225,19 +226,49 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	runner.Options.Logger.Info("golangci-lint reported %d issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
+	for i := range result.Issues {
+		if runner.Options.LinterConfig.Output.PrintLinterName {
+			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
+		}
 
-	if len(result.Issues) > 0 {
-		reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
+		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
+			Path:     github.String(result.Issues[i].FilePath()),
+			Position: github.Int(result.Issues[i].HunkPos),
+			Body:     github.String(result.Issues[i].Text),
+		})
+	}
+
+	totalComments := len(reviewRequest.Comments)
+	runner.Options.Logger.Debug("filtering comments %d", len(reviewRequest.Comments))
+	if err := runner.filterComments(&reviewRequest); err != nil {
+		return fmt.Errorf("unable to filter comments: %w", err)
+	}
+	newComments := len(reviewRequest.Comments)
+	runner.Options.Logger.Debug("filtered comments down to %d", newComments)
+
+	runner.Options.Logger.Info("golangci-lint reported %d issues (%d issues are new) and %d warnings for %s", totalComments, newComments, len(warnings), runner.meta.Head.FullName)
+
+	if newComments > 0 {
+		if totalComments != newComments {
+			reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d new issues", newComments))
+		} else {
+			reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", newComments))
+		}
 	} else {
-		reviewRequest.Body = github.String(runner.Options.NoIssuesText)
+		if totalComments != newComments {
+			reviewRequest.Body = github.String(runner.Options.NoIssuesText)
+		} else {
+			reviewRequest.Body = github.String(runner.Options.NoNewIssuesText)
+		}
 	}
 
 	if len(warnings) > 0 {
 		var sb strings.Builder
-		sb.WriteString(*reviewRequest.Body)
-		sb.WriteRune(',')
-		fmt.Fprintf(&sb, " but got %d warnings:", len(warnings))
+		if *reviewRequest.Body != "" {
+			sb.WriteString(*reviewRequest.Body)
+			sb.WriteString(", but ")
+		}
+		fmt.Fprintf(&sb, "got %d warnings:", len(warnings))
 		sb.WriteString("<code>")
 		for _, w := range warnings {
 			fmt.Fprintf(&sb, "%s: %s\n", w.Tag, strings.TrimSpace(w.Text))
@@ -258,27 +289,6 @@ func (runner *Runner) Run() error {
 		} else {
 			reviewRequest.Event = github.String(githubEventComment)
 		}
-	}
-
-	for i := range result.Issues {
-		if runner.Options.LinterConfig.Output.PrintLinterName {
-			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
-		}
-
-		// addToList := true
-		// for _, c := range reviewRequest.Comments {
-		// 	if *c.Path == *comment.Path && *c.Position == *comment.Position && *c.Body == *comment.Body {
-		// 		addToList = false
-		// 		break
-		// 	}
-		// }
-		// if addToList {
-		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
-			Path:     github.String(result.Issues[i].FilePath()),
-			Position: github.Int(result.Issues[i].HunkPos),
-			Body:     github.String(result.Issues[i].Text),
-		})
-		// }
 	}
 
 	if err := runner.sendReview(&reviewRequest); err != nil {
@@ -314,6 +324,46 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review %s: %w", string(buf), err)
 	}
+	return nil
+}
+
+func (runner *Runner) filterComments(request *github.PullRequestReviewRequest) error {
+	page := 1
+	for {
+		comments, res, err := runner.Options.Client.PullRequests.ListComments(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &github.PullRequestListCommentsOptions{
+			ListOptions: github.ListOptions{
+				Page:    page,
+				PerPage: 30,
+			},
+		})
+
+		if err != nil {
+			return err
+		}
+
+		for _, comment := range comments {
+			for i := len(request.Comments) - 1; i >= 0; i-- {
+				if request.Comments[i].GetPosition() != comment.GetPosition() {
+					continue
+				}
+				if request.Comments[i].GetPath() != comment.GetPath() {
+					continue
+				}
+				if request.Comments[i].GetBody() != comment.GetBody() {
+					continue
+				}
+				request.Comments = append(request.Comments[:i], request.Comments[i+1:]...)
+				if len(request.Comments) == 0 {
+					return nil
+				}
+			}
+		}
+		if res.NextPage <= 0 {
+			return nil
+		}
+		page = res.NextPage
+	}
+
 	return nil
 }
 
