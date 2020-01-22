@@ -22,14 +22,15 @@ import (
 )
 
 var (
-	cacheDirFlag       = kingpin.Flag("cache-dir", "cache dir").Envar("CACHE_DIR").String()
-	approveFlag        = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
-	requestChangesFlag = kingpin.Flag("request-changes", "whether the bot should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
-	noChangesTextFlag  = kingpin.Flag("no-changes-text", "the text the bot should send if there are no go code changes").Envar("NO_CHANGES_TEXT").Default().String()
-	noIssuesTextFlag   = kingpin.Flag("no-issues-text", "the text the bot should send if there are no issues").Envar("NO_ISSUES_TEXT").Default("").String()
-	configFileFlag     = kingpin.Flag("config", "which config file to use").Envar("CONFIG_FILE").Default(".golangci.yml").String()
-	debugFlag          = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
-	dryRunFlag         = kingpin.Flag("dry-run", "do not actual post on the pr").Envar("DRY_RUN").Bool()
+	cacheDirFlag        = kingpin.Flag("cache-dir", "cache dir").Envar("CACHE_DIR").String()
+	approveFlag         = kingpin.Flag("approve", "whether the app should approve if no issues were found (selecting false will only result in a comment)").Envar("APPROVE").Bool()
+	requestChangesFlag  = kingpin.Flag("request-changes", "whether the bot should request changes if issues were found (selecting false will only result in a comment)").Envar("REQUEST_CHANGES").Bool()
+	noChangesTextFlag   = kingpin.Flag("no-changes-text", "the text the bot should send if there are no go code changes").Envar("NO_CHANGES_TEXT").Default().String()
+	noIssuesTextFlag    = kingpin.Flag("no-issues-text", "the text the bot should send if there are no issues").Envar("NO_ISSUES_TEXT").Default("").String()
+	noNewIssuesTextFlag = kingpin.Flag("no-new-issues-text", "the text the bot should send if there are no new issues").Envar("NO_NEW_ISSUES_TEXT").Default("").String()
+	configFileFlag      = kingpin.Flag("config", "which config file to use").Envar("CONFIG_FILE").Default(".golangci.yml").String()
+	debugFlag           = kingpin.Flag("debug", "enable debug log").Envar("DEBUG").Hidden().Bool()
+	dryRunFlag          = kingpin.Flag("dry-run", "do not actual post on the pr").Envar("DRY_RUN").Bool()
 
 	appCmd            = kingpin.Command("app", "run as an app")
 	addrFlag          = appCmd.Flag("host-addr", "address to listen to, if unspecified takes HOST_ADDR environment variable").Envar("HOST_ADDR").Required().String()
@@ -221,15 +222,16 @@ func options(logger logger) *golangci_lint_runner.Options {
 	}
 
 	options := golangci_lint_runner.Options{
-		Logger:         logger,
-		Timeout:        0,
-		CacheDir:       *cacheDirFlag,
-		Approve:        *approveFlag,
-		RequestChanges: *requestChangesFlag,
-		DryRun:         *dryRunFlag,
-		LinterConfig:   config,
-		NoChangesText:  *noChangesTextFlag,
-		NoIssuesText:   *noIssuesTextFlag,
+		Logger:          logger,
+		Timeout:         0,
+		CacheDir:        *cacheDirFlag,
+		Approve:         *approveFlag,
+		RequestChanges:  *requestChangesFlag,
+		DryRun:          *dryRunFlag,
+		LinterConfig:    config,
+		NoChangesText:   *noChangesTextFlag,
+		NoIssuesText:    *noIssuesTextFlag,
+		NoNewIssuesText: *noNewIssuesTextFlag,
 	}
 
 	if options.Timeout <= 0 {

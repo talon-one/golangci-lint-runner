@@ -48,8 +48,9 @@ type Options struct {
 	RequestChanges    bool
 	DryRun            bool
 	// NoChangesText sends the text when no go code changes are present
-	NoChangesText string
-	NoIssuesText  string
+	NoChangesText   string
+	NoIssuesText    string
+	NoNewIssuesText string
 }
 
 type BranchMeta struct {
@@ -225,12 +226,40 @@ func (runner *Runner) Run() error {
 		return err
 	}
 
-	runner.Options.Logger.Info("golangci-lint reported %d issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
+	for i := range result.Issues {
+		if runner.Options.LinterConfig.Output.PrintLinterName {
+			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
+		}
 
-	if len(result.Issues) > 0 {
-		reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", len(result.Issues)))
+		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
+			Path:     github.String(result.Issues[i].FilePath()),
+			Position: github.Int(result.Issues[i].HunkPos),
+			Body:     github.String(result.Issues[i].Text),
+		})
+	}
+
+	totalComments := len(reviewRequest.Comments)
+	runner.Options.Logger.Debug("filtering comments %d", len(reviewRequest.Comments))
+	if err := runner.filterComments(&reviewRequest); err != nil {
+		return fmt.Errorf("unable to filter comments: %w", err)
+	}
+	newComments := len(reviewRequest.Comments)
+	runner.Options.Logger.Debug("filtered comments down to %d", newComments)
+
+	runner.Options.Logger.Info("golangci-lint reported %d issues (%d issues are new) and %d warnings for %s", totalComments, newComments, len(warnings), runner.meta.Head.FullName)
+
+	if newComments > 0 {
+		if totalComments != newComments {
+			reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d new issues", newComments))
+		} else {
+			reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", newComments))
+		}
 	} else {
-		reviewRequest.Body = github.String(runner.Options.NoIssuesText)
+		if totalComments != newComments {
+			reviewRequest.Body = github.String(runner.Options.NoIssuesText)
+		} else {
+			reviewRequest.Body = github.String(runner.Options.NoNewIssuesText)
+		}
 	}
 
 	if len(warnings) > 0 {
@@ -260,22 +289,6 @@ func (runner *Runner) Run() error {
 		} else {
 			reviewRequest.Event = github.String(githubEventComment)
 		}
-	}
-
-	for i := range result.Issues {
-		if runner.Options.LinterConfig.Output.PrintLinterName {
-			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
-		}
-
-		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
-			Path:     github.String(result.Issues[i].FilePath()),
-			Position: github.Int(result.Issues[i].HunkPos),
-			Body:     github.String(result.Issues[i].Text),
-		})
-	}
-
-	if err := runner.filterComments(&reviewRequest); err != nil {
-		return fmt.Errorf("unable to filter comments: %w", err)
 	}
 
 	if err := runner.sendReview(&reviewRequest); err != nil {
