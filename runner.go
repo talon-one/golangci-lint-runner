@@ -235,9 +235,11 @@ func (runner *Runner) Run() error {
 
 	if len(warnings) > 0 {
 		var sb strings.Builder
-		sb.WriteString(*reviewRequest.Body)
-		sb.WriteRune(',')
-		fmt.Fprintf(&sb, " but got %d warnings:", len(warnings))
+		if *reviewRequest.Body != "" {
+			sb.WriteString(*reviewRequest.Body)
+			sb.WriteString(", but ")
+		}
+		fmt.Fprintf(&sb, "got %d warnings:", len(warnings))
 		sb.WriteString("<code>")
 		for _, w := range warnings {
 			fmt.Fprintf(&sb, "%s: %s\n", w.Tag, strings.TrimSpace(w.Text))
@@ -265,20 +267,15 @@ func (runner *Runner) Run() error {
 			result.Issues[i].Text += fmt.Sprintf(" (from %s)", result.Issues[i].FromLinter)
 		}
 
-		// addToList := true
-		// for _, c := range reviewRequest.Comments {
-		// 	if *c.Path == *comment.Path && *c.Position == *comment.Position && *c.Body == *comment.Body {
-		// 		addToList = false
-		// 		break
-		// 	}
-		// }
-		// if addToList {
 		reviewRequest.Comments = append(reviewRequest.Comments, &github.DraftReviewComment{
 			Path:     github.String(result.Issues[i].FilePath()),
 			Position: github.Int(result.Issues[i].HunkPos),
 			Body:     github.String(result.Issues[i].Text),
 		})
-		// }
+	}
+
+	if err := runner.filterComments(&reviewRequest); err != nil {
+		return fmt.Errorf("unable to filter comments: %w", err)
 	}
 
 	if err := runner.sendReview(&reviewRequest); err != nil {
@@ -314,6 +311,46 @@ func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest)
 	if err != nil {
 		return fmt.Errorf("unable to create review %s: %w", string(buf), err)
 	}
+	return nil
+}
+
+func (runner *Runner) filterComments(request *github.PullRequestReviewRequest) error {
+	page := 1
+	for {
+		comments, res, err := runner.Options.Client.PullRequests.ListComments(runner.Options.Context, runner.meta.Base.OwnerName, runner.meta.Base.RepoName, runner.meta.PullRequestNumber, &github.PullRequestListCommentsOptions{
+			ListOptions: github.ListOptions{
+				Page:    page,
+				PerPage: 30,
+			},
+		})
+
+		if err != nil {
+			return err
+		}
+
+		for _, comment := range comments {
+			for i := len(request.Comments) - 1; i >= 0; i-- {
+				if request.Comments[i].GetPosition() != comment.GetPosition() {
+					continue
+				}
+				if request.Comments[i].GetPath() != comment.GetPath() {
+					continue
+				}
+				if request.Comments[i].GetBody() != comment.GetBody() {
+					continue
+				}
+				request.Comments = append(request.Comments[:i], request.Comments[i+1:]...)
+				if len(request.Comments) == 0 {
+					return nil
+				}
+			}
+		}
+		if res.NextPage <= 0 {
+			return nil
+		}
+		page = res.NextPage
+	}
+
 	return nil
 }
 
