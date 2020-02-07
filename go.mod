@@ -11,6 +11,7 @@ require (
 	github.com/json-iterator/go v1.1.9
 	github.com/spf13/viper v1.6.1
 	github.com/stretchr/testify v1.4.0
+	github.com/valyala/fastjson v1.4.5
 	golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be
 	google.golang.org/appengine v1.4.0 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6

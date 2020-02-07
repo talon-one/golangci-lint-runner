@@ -13,10 +13,13 @@ import (
 
 	"time"
 
+	"strings"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/google/go-github/github"
 	golangci_lint_runner "github.com/talon-one/golangci-lint-runner"
+	"github.com/valyala/fastjson"
 	"golang.org/x/oauth2"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -41,9 +44,11 @@ var (
 
 	standAloneCmd         = kingpin.Command("standalone", "run standalone")
 	tokenFlag             = standAloneCmd.Flag("token", "github token to use").Envar("GITHUB_TOKEN").Required().String()
-	pullRequestNumberFlag = standAloneCmd.Flag("pull-request-number", "github pull request number").Envar("GITHUB_PULL_REQUEST_NUMBER").Required().Int()
-	repoNameFlag          = standAloneCmd.Flag("repo-name", "github repository name").Envar("GITHUB_REPO_NAME").Required().String()
-	repoOwnerFlag         = standAloneCmd.Flag("repo-owner", "github repository owner").Envar("GITHUB_REPO_OWNER").Required().String()
+	pullRequestNumberFlag = standAloneCmd.Flag("pull-request-number", "github pull request number").Envar("GITHUB_PULL_REQUEST_NUMBER").Int()
+	repoNameFlag          = standAloneCmd.Flag("repo-name", "github repository name").Envar("GITHUB_REPO_NAME").String()
+	repoOwnerFlag         = standAloneCmd.Flag("repo-owner", "github repository owner").Envar("GITHUB_REPO_OWNER").String()
+	repoRepoFlag          = standAloneCmd.Flag("repo", "github full repository").Envar("GITHUB_REPOSITORY").String()
+	eventPath             = standAloneCmd.Flag("event-path", "the event path (only github actions)").Envar("GITHUB_EVENT_PATH").String()
 )
 var version string
 var commit string
@@ -300,6 +305,43 @@ func server() {
 func standalone() {
 	logger := logger{}
 	logger.Debug("running in standalone mode")
+
+	if *repoNameFlag == "" && *repoOwnerFlag == "" && *repoRepoFlag == "" {
+		logger.Error("must either specify --repo or --repo-name + --repo-owner")
+		os.Exit(1)
+	}
+
+	if *repoRepoFlag != "" {
+		parts := strings.FieldsFunc(*repoRepoFlag, func(r rune) bool {
+			return r == '/'
+		})
+		if len(parts) != 2 {
+			logger.Error("unable to parse %s", *repoRepoFlag)
+			os.Exit(1)
+		}
+		repoOwnerFlag = &parts[0]
+		repoNameFlag = &parts[1]
+	}
+
+	if *eventPath != "" {
+		b, err := ioutil.ReadFile(*eventPath)
+		if err != nil {
+			logger.Error("unable to open %s: %s", *eventPath, err)
+			os.Exit(1)
+		}
+		id := fastjson.GetInt(b, "pull_request.number")
+		if id == 0 {
+			logger.Error("unable to get pull_request.number from %s: %s", *eventPath, string(b))
+			os.Exit(1)
+		}
+		pullRequestNumberFlag = &id
+	}
+
+	if *pullRequestNumberFlag == 0 {
+		logger.Error("must either specify --event-path or --pull-request-number")
+		os.Exit(1)
+	}
+
 	opt := options(logger)
 	opt.Context, _ = context.WithTimeout(context.Background(), opt.Timeout)
 	opt.PullRequestNumber = *pullRequestNumberFlag
