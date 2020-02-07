@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: linter
-        uses: "docker://talononedevs/golangci-lint-runner:latest"
+        uses: "docker://talononedevs/golangci-lint-runner@sha256:2e00aaabc35fe2253e78ec593f96b3a787081007fdcccc0a633ab1f46375dab0"
         with:
           entrypoint: /bin/golangci-lint-runner
           args: standalone
@@ -42,3 +42,5 @@ Metadata: Read-Only
 ```
 
 
+> Note: The code quality is not the best, this was done in a short period of time
+> There is a lot to improve e.g. tests...
