@@ -25,6 +25,8 @@ jobs:
           APPROVE: false
           REQUEST_CHANGES: false
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          NO_ISSUES_TEXT: "No issues found"
+          NO_CHANGES_TEXT: "No issues found"
 ``` 
 
 ## Github App Setup
