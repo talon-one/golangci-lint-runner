@@ -105,6 +105,8 @@ func (runner *Runner) generateConfig(workDir string) (string, error) {
 	runner.Options.LinterConfig.Output.Format = "json"
 	runner.Options.LinterConfig.Output.Color = "never"
 	runner.Options.LinterConfig.Output.PrintIssuedLine = true
+	// runner.Options.LinterConfig.Output.PrintLinterName   -- use parent
+	runner.Options.LinterConfig.Output.UniqByLine = true
 	runner.Options.LinterConfig.Output.PrintWelcomeMessage = false
 
 	// runner.Options.LinterConfig.LintersSettings -- use parent

@@ -71,6 +71,7 @@ func options(logger logger) *golangci_lint_runner.Options {
 			Color               string
 			PrintIssuedLine     bool `mapstructure:"print-issued-lines"`
 			PrintLinterName     bool `mapstructure:"print-linter-name"`
+			UniqByLine          bool `mapstructure:"uniq-by-line"`
 			PrintWelcomeMessage bool `mapstructure:"print-welcome"`
 		}{
 			PrintLinterName: true,
@@ -204,11 +205,12 @@ func options(logger logger) *golangci_lint_runner.Options {
 				MultiFunc: false,
 			},
 			WSL: config.WSLSettings{
-				StrictAppend:                true,
-				AllowAssignAndCallCuddle:    true,
-				AllowMultiLineAssignCuddle:  true,
-				AllowCaseTrailingWhitespace: true,
-				AllowCuddleDeclaration:      false,
+				StrictAppend:                     true,
+				AllowAssignAndCallCuddle:         true,
+				AllowMultiLineAssignCuddle:       true,
+				AllowCuddleDeclaration:           false,
+				AllowTrailingComment:             false,
+				CaseForceTrailingWhitespaceLimit: 0,
 			},
 		},
 		Linters: config.Linters{
