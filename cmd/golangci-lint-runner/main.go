@@ -329,7 +329,7 @@ func standalone() {
 			logger.Error("unable to open %s: %s", *eventPath, err)
 			os.Exit(1)
 		}
-		id := fastjson.GetInt(b, "pull_request.number")
+		id := fastjson.GetInt(b, "pull_request", "number")
 		if id == 0 {
 			logger.Error("unable to get pull_request.number from %s: %s", *eventPath, string(b))
 			os.Exit(1)
