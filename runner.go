@@ -300,7 +300,7 @@ func (runner *Runner) Run() error {
 
 func (runner *Runner) sendReview(reviewRequest *github.PullRequestReviewRequest) error {
 	// do not send conditions
-	if *reviewRequest.Event == githubEventRequestChanges || *reviewRequest.Event == githubEventComment && (reviewRequest.Body == nil || *reviewRequest.Body == "") {
+	if (*reviewRequest.Event == githubEventRequestChanges || *reviewRequest.Event == githubEventComment) && (reviewRequest.Body == nil || *reviewRequest.Body == "") {
 		runner.Options.Logger.Debug("not sending review because body is empty and event is either REQUEST_CHANGES or COMMENT")
 		return nil
 	}
