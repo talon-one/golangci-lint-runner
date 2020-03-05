@@ -221,6 +221,11 @@ func (runner *Runner) Run() error {
 	runner.Options.Logger.Debug("golangci-lint reported %d (unfiltered) issues and %d warnings for %s", len(result.Issues), len(warnings), runner.meta.Head.FullName)
 
 	runner.Options.Logger.Debug("filtering issues")
+
+	// for _, issue := range result.Issues {
+	// 	fmt.Printf("%s:%d: %s (from %s)\n", issue.FilePath(), issue.Line(), issue.Text, issue.FromLinter)
+	// }
+
 	result.Issues, err = filterIssues(patchFile, result.Issues)
 	if err != nil {
 		return err
