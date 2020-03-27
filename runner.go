@@ -253,21 +253,26 @@ func (runner *Runner) Run() error {
 
 	runner.Options.Logger.Info("golangci-lint reported %d issues (%d issues are new) and %d warnings for %s", totalComments, newComments, len(warnings), runner.meta.Head.FullName)
 
+	passing := false
+
 	if newComments > 0 {
 		if totalComments != newComments {
 			reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d new issues", newComments))
 		} else {
 			reviewRequest.Body = github.String(fmt.Sprintf("golangci-lint found %d issues", newComments))
 		}
+		passing = false
 	} else {
 		if totalComments != newComments {
 			reviewRequest.Body = github.String(runner.Options.NoIssuesText)
 		} else {
 			reviewRequest.Body = github.String(runner.Options.NoNewIssuesText)
 		}
+		passing = true
 	}
 
 	if len(warnings) > 0 {
+		passing = false
 		var sb strings.Builder
 		if *reviewRequest.Body != "" {
 			sb.WriteString(*reviewRequest.Body)
@@ -282,7 +287,7 @@ func (runner *Runner) Run() error {
 		reviewRequest.Body = github.String(sb.String())
 	}
 
-	if len(result.Issues) <= 0 && len(warnings) <= 0 {
+	if passing {
 		if runner.Options.Approve {
 			reviewRequest.Event = github.String(githubEventApprove)
 		} else {
