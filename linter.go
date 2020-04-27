@@ -91,7 +91,7 @@ func (runner *Runner) generateConfig(workDir string) (string, error) {
 	runner.Options.LinterConfig.Run.NoConfig = false
 	runner.Options.LinterConfig.Run.Args = nil
 	// runner.Options.LinterConfig.Run.BuildTags -- use parent
-	// runner.Options.LinterConfig.Run.ModulesDownloadMode = "" // use default
+	// runner.Options.LinterConfig.Run.ModulesDownloadMode -- use parent
 	runner.Options.LinterConfig.Run.ExitCodeIfIssuesFound = 0
 	// runner.Options.LinterConfig.Run.AnalyzeTests -- use parent
 
