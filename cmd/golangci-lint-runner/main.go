@@ -210,12 +210,12 @@ func options(logger logger) *golangci_lint_runner.Options {
 				MultiFunc: false,
 			},
 			WSL: config.WSLSettings{
-				StrictAppend:                     true,
-				AllowAssignAndCallCuddle:         true,
-				AllowMultiLineAssignCuddle:       true,
-				AllowCuddleDeclaration:           false,
-				AllowTrailingComment:             false,
-				CaseForceTrailingWhitespaceLimit: 0,
+				StrictAppend:               true,
+				AllowAssignAndCallCuddle:   true,
+				AllowMultiLineAssignCuddle: true,
+				AllowCuddleDeclaration:     false,
+				AllowTrailingComment:       false,
+				// CaseForceTrailingWhitespaceLimit: 0,
 			},
 		},
 		Linters: config.Linters{
