@@ -1,4 +1,4 @@
-FROM golang:1.13.4-buster AS BUILDER
+FROM golang:1.14.2-buster AS BUILDER
 
 COPY . /go/src/github.com/talon-one/golangci-lint-runner
 
