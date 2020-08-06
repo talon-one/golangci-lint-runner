@@ -1,6 +1,6 @@
 module github.com/talon-one/golangci-lint-runner
 
-go 1.12
+go 1.14
 
 require (
 	github.com/Djarvur/go-err113 v0.1.0 // indirect

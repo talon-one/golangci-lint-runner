@@ -74,10 +74,12 @@ func options(logger logger) *golangci_lint_runner.Options {
 		Output: struct {
 			Format              string
 			Color               string
-			PrintIssuedLine     bool `mapstructure:"print-issued-lines"`
-			PrintLinterName     bool `mapstructure:"print-linter-name"`
-			UniqByLine          bool `mapstructure:"uniq-by-line"`
-			PrintWelcomeMessage bool `mapstructure:"print-welcome"`
+			PrintIssuedLine     bool   `mapstructure:"print-issued-lines"`
+			PrintLinterName     bool   `mapstructure:"print-linter-name"`
+			UniqByLine          bool   `mapstructure:"uniq-by-line"`
+			SortResults         bool   `mapstructure:"sort-results"`
+			PrintWelcomeMessage bool   `mapstructure:"print-welcome"`
+			PathPrefix          string `mapstructure:"path-prefix"`
 		}{
 			PrintLinterName: true,
 		},
@@ -215,7 +217,7 @@ func options(logger logger) *golangci_lint_runner.Options {
 				AllowMultiLineAssignCuddle:       true,
 				AllowCuddleDeclaration:           false,
 				AllowTrailingComment:             false,
-				CaseForceTrailingWhitespaceLimit: 0,
+				ForceCaseTrailingWhitespaceLimit: 0,
 			},
 		},
 		Linters: config.Linters{
