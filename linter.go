@@ -66,7 +66,7 @@ func (runner *Runner) runLinter(cacheDir, workDir, repoDir string) (*printers.JS
 	}
 
 	if res.Report != nil && res.Report.Error != "" {
-		return nil, fmt.Errorf("can't run golangci-lint: %w", res.Report.Error)
+		return nil, fmt.Errorf("can't run golangci-lint: %s", res.Report.Error)
 	}
 
 	return &res, nil
